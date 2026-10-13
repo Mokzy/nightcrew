@@ -1,18 +1,21 @@
-# Vigil
+# Nightcrew
 
-Keeps a Windows laptop working with the lid closed while Claude Code or Codex is
-busy, then lets it sleep normally once the work is done.
+Keeps a closed Windows laptop working for as long as Claude Code or Codex is
+busy, freezes everything else, then sleeps.
 
-- Nothing running: closing the lid sleeps as usual.
+- Nothing running: closing the lid does whatever Windows is set to do.
 - An agent mid-task, or a busy job it started: closing the lid keeps the laptop
-  running, freezes the apps the agents aren't using, and sleeps once everything
-  finishes.
+  running, freezes the apps the agents aren't using, and carries out your lid
+  action once everything finishes.
 - Battery floor, a maximum lid-closed time, and a phone-hotspot fallback if
   Wi-Fi drops.
+- Tray app, no hooks or plugins, single `.exe` on .NET Framework 4.8.
 
-Status: in design. See [docs/superpowers/specs](docs/superpowers/specs).
+Status: in design. See the
+[design spec](docs/superpowers/specs/2026-10-13-nightcrew-design.md).
 
-Inspired by Insomnia for macOS by Krish Garg.
+Inspired by [Insomnia](https://github.com/krishhgg/Insomnia) for macOS by Krish
+Garg.
 
 ## License
 
