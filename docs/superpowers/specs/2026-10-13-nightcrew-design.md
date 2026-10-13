@@ -12,6 +12,50 @@ The technical claims come from a research pass on 13 October 2026, which
 covered seven topics, each checked by an independent verifier. Anything that
 only hardware can settle is a spike in section 13.
 
+## 0. v1 scope
+
+On 13 October 2026 the owner asked for something "simple, stupid,
+functional". This section overrides the rest of the spec for v1. Sections 1
+to 16 stay as the full design for later versions.
+
+**In v1:**
+- **Live** means any of:
+  - Claude Code or Codex transcript files (`~\.claude\projects`,
+    `~\.codex\sessions`) grew within G (5 min); claude-mem observer folders
+    are ignored
+  - a tool process under an agent (a descendant of `claude.exe`/`codex.exe`)
+    used at least 10% of one core
+  - `codex.exe` itself used at least 2% of a core
+  - any process used at least 30% GPU
+  - Hold awake is on
+- **While live:** lid action Do nothing (AC and DC) and Sleep after Never (AC
+  and DC), journaled first, plus a keep-awake request. If the lid closes and
+  Lock is on, the workstation locks.
+- **Work done with the lid closed and no input for 5 minutes:** restore the
+  settings, then carry out the owner's lid action:
+  - Sleep: monitor off, then hibernate after 5 minutes without suspend
+  - Hibernate or Shut down: hibernate
+  - Do nothing: nothing
+- **Battery floor (20%) or cap (8 h) with the lid closed:** restore and
+  hibernate.
+- **Restore** happens at startup, quit and session end. A per-user watchdog
+  task restores the settings if Nightcrew isn't running.
+- **Tray:** status, Hold awake, Pause, floor, cap, Lock, Start at login, Open
+  log, Quit. A `--dry-run` mode is included.
+
+**Not in v1:**
+- freezing apps
+- muting
+- hotspot switching (Windows fails over by itself if the phone hotspot is set
+  to connect automatically)
+- external-display detection (no input within 5 minutes stands in for it)
+- remote-session handling
+- multi-account ownership
+- drift handling
+- the temporary 60 s sleep-after step
+- per-process environment reads
+- the full spike harness (the owner's hardware checklist replaces it)
+
 ## 1. Goals and success criteria
 
 The owner runs coding agents and GPU jobs on a Lenovo laptop (Windows 11 build
