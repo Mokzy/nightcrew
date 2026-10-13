@@ -1,7 +1,7 @@
 # Nightcrew design
 
-Date: 13 October 2026. Status: draft v2 for owner review. v2 was revised after
-an adversarial five-lens review the same day.
+Date: 13 October 2026. Status: approved by the owner on 13 October 2026 (v2,
+revised after an adversarial five-lens review the same day).
 
 Nightcrew is a Windows tray app. It keeps a laptop working with the lid closed
 for exactly as long as Claude Code or Codex is busy, and freezes the apps the
@@ -53,7 +53,9 @@ Nightcrew succeeds when:
   - an agent mid-task
   - a busy background job that an agent started, such as a training run
   - a manual tray hold
-- **Not live:** an agent waiting for the owner's approval.
+- **Not live:** an agent waiting for the owner's approval, or waiting for a
+  usage limit to reset.
+- **No hotspot limit.** The hotspot fallback has no data or time limit.
 - **Freeze, don't close.** Apps are frozen, never closed, and only when the
   lid closes while something is live.
 - **Extras:**
@@ -96,9 +98,8 @@ evaluation forward.
 1. Paused is on → **Paused**.
 2. A Finishing run is in progress and no exit in 4.4 applies → **Finishing**.
 3. Nightcrew holds the keep-awake request (Armed or Working), Shut holds, and
-   any of: (on DC, battery ≤ floor), (lid-closed time ≥ cap), (the hotspot
-   usage limit is reached) → **Finishing**, with reason *cap* for the cap and
-   *floor* otherwise.
+   either (on DC, battery ≤ floor) or (lid-closed time ≥ cap) →
+   **Finishing** with reason *floor* or *cap*.
 4. Live, Away, the gate passes and not spent → **Working**.
 5. Live and not spent → **Armed** (shown as *Live*). If the gate fails, Armed
    runs degraded (6.2).
@@ -361,8 +362,9 @@ pattern, or a transcript directory. They can be undone under **Ignored ▸**.
 ### 5.9 Quiet agents
 
 An approval wait, a usage-limit retry wait and "done" all go quiet, so live
-ends after G in every case. For approval waits, that matches the owner's
-decision. For retry waits it is a v1 limitation, raised as owner question 14.1.
+ends after G in every case. That matches the owner's decisions for both
+approval waits and usage-limit retry waits. In a retry wait, the laptop sleeps
+and the retry doesn't fire until it wakes.
 
 ## 6. Power control
 
@@ -770,10 +772,8 @@ reconnects the original network. If the original is unknown, it tries the
 saved auto-connect, non-hotspot profiles in profile-list order. It never stays
 on the hotspot and never issues a bare `WlanDisconnect`.
 
-**Usage limit.** Hotspot bytes (`GetIfEntry2`) and time are logged for each
-episode. There is an optional limit: off, 500 MB, 1 GB or 5 GB, or 1, 2 or
-4 h. When it is reached, the controller finishes with reason *floor* (4.1
-rule 3), and Wi-Fi is restored as in 6.6. The default is owner question 14.2.
+**Usage.** Hotspot bytes (`GetIfEntry2`) and time are logged for each
+episode. There is no data or time limit, by the owner's decision.
 
 **Tray:** profiles are ordered by the order in which they were ticked, with a
 **Clear** item. **Test hotspot** works only with the lid open.
@@ -992,8 +992,7 @@ Warnings appear when they apply:
 - **Lock when the lid closes** (on)
 - **Battery floor ▸** 10 / 15 / 20 / 30% / off
 - **Lid-closed limit ▸** 2 / 4 / 8 / 12 h
-- **Hotspot ▸** profiles in tick order, Clear, Test hotspot (lid open only),
-  Usage limit ▸
+- **Hotspot ▸** profiles in tick order, Clear, Test hotspot (lid open only)
 - **Start at login** (on)
 - **Open log**
 - **Quit:** restores first
@@ -1064,7 +1063,6 @@ Pure classes, unit-tested with fakes:
 - `categories{}` (all true by default)
 - `virtualDisplayAllow[]`
 - `hotspots[]` (in order)
-- `hotspotLimit`
 - `proxyPort` (default none)
 - `computerUseTools[]`
 - `installerPatterns[]`
@@ -1168,7 +1166,6 @@ recommends a stable install path.
 - Finishing → Armed: owner values captured afresh, or taken from
   `finishTemp.ownerValue` if its restore failed
 - Pause during a sleep chain: the chain is cancelled and never suspends
-- hotspot usage limit reached: finishes with reason floor
 - drift limit reached: degraded Armed
 - Pause
 - degraded gate
@@ -1218,7 +1215,6 @@ recommends a stable install path.
   - radio off
   - ACM failures
   - flapping
-  - the usage limit
 - **Task XML generation.**
 
 ### 13.2 Hardware spikes
@@ -1275,11 +1271,9 @@ Upload the exe to VirusTotal.
 
 ## 14. Risks and open questions
 
-**Owner questions:**
-1. **Usage-limit retry waits** look done, so the laptop sleeps and the retry
-   never fires. Accept this for v1, or have S7 capture a real retry wait so v1
-   can hold live until the stated reset time?
-2. **Hotspot usage limit default:** off, or a value?
+**Owner answers and notes (13 October 2026):**
+1. **Usage-limit retry waits** are not live; the laptop sleeps.
+2. **Hotspot fallback** has no data or time limit.
 3. **Lid action.** Once Nightcrew is in use, consider setting the Windows lid
    action back to Sleep. With Do nothing, a finished lid-closed session on AC
    stays on (criterion 3).
