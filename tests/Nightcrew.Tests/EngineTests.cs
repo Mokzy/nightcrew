@@ -211,6 +211,25 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
+    public void A_suspend_during_finishing_means_the_late_tick_after_wake_never_hibernates()
+    {
+        _signal.Busy = true;
+        _engine.Lid = LidState.Closed;
+        _power.IdleTime = TimeSpan.FromMinutes(10);
+        Tick();
+        _signal.Busy = false;
+        Tick(afterMinutes: 6);
+        Tick(afterMinutes: 1); // MonitorOff sent: the laptop goes into Modern Standby
+
+        _engine.NoteSuspend();
+        _power.IdleTime = TimeSpan.FromHours(3);
+        Tick(afterMinutes: 180); // overdue tick on wake, before the lid-open event is handled
+
+        Assert.DoesNotContain("Hibernate", _calls);
+        Assert.Equal(Mode.Idle, _controller.Mode);
+    }
+
+    [Fact]
     public void Status_combines_the_controller_status_and_the_reason()
     {
         Assert.Equal("Idle", _engine.Status);

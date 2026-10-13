@@ -72,6 +72,7 @@ public sealed class TrayApp : ApplicationContext
 
         engine.Lid = events.Lid;
         events.LidChanged += lid => Apply("Lid change", () => engine.Lid = lid);
+        events.Suspending += engine.NoteSuspend; // lock-free: the timer thread may hold the gate inside SetSuspendState
         events.Resumed += () => Apply("Resume", controller.OnResume);
         events.SessionEnding += () => Guarded("Restore at session end", () =>
         {

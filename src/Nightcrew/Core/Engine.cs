@@ -13,6 +13,7 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
     private string? _loggedBlock;
     private TimeSpan _restoreTriedAt = clock.Now; // so the first retry comes at least a minute after startup
     private TimeSpan? _armBlockedUntil;
+    private volatile bool _suspended;
 
     public LidState Lid { get; set; }
 
@@ -26,6 +27,11 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
         try
         {
             var now = clock.Now;
+            if (_suspended)
+            {
+                _suspended = false;
+                controller.OnResume();
+            }
             activity.Sample(now);
             var source = power.Source;
             var ownerLid = (journal.OwnerValues ?? policy.Read()).LidFor(source);
@@ -39,6 +45,12 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
             log.Warn($"Tick failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Called on PBT_APMSUSPEND without taking any lock. The next tick ends a Finishing run first, so a tick that
+    /// fires late after wake (lid opening, lid event not yet handled) can't hibernate the laptop in front of the user.
+    /// </summary>
+    public void NoteSuspend() => _suspended = true;
 
     /// <summary>Releases the keep-awake request and restores the owner's settings (quit, session end, startup).</summary>
     public void RestoreNow() => ReleaseAndRestore(clock.Now);

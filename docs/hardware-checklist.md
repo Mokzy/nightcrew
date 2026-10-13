@@ -174,6 +174,10 @@ the heartbeat.
 - With Hibernate, there's a 42 with TargetState 5 within about a minute of
   the disarm line.
 - After waking, the settings check shows your values.
+- With Sleep, if Windows went into standby (the 506), leave it closed for
+  another 30 minutes, then open the lid and use the laptop. No 42 with
+  TargetState 5 follows within a minute of opening it: Nightcrew must not
+  hibernate a laptop you've just come back to.
 
 ## 7. Battery floor and lid-closed limit
 
