@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nightcrew night timeline</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { padding: 64px 80px; }
+  h2 { margin: 0 0 44px; font-size: 40px; line-height: 1.1; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; position: relative; }
+  /* The hairline that runs through the four marks. */
+  .steps::before { content: ""; position: absolute; left: 28px; right: 28px; top: 28px; height: 1px; background: var(--hairline); }
+  .mark { width: 56px; height: 56px; display: block; position: relative; background: var(--night); padding: 0 2px; }
+  .dim { opacity: 0.45; }
+  .number { margin: 22px 0 8px; font-size: 14px; font-weight: 500; color: var(--faint); letter-spacing: 0.06em; }
+  h3 { margin: 0 0 10px; font-size: 30px; line-height: 1.1; }
+  p { margin: 0; font-size: 17px; line-height: 1.5; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h2 class="serif">One night, <em>four steps.</em></h2>
+  <div class="steps">
+    <div>
+      <img class="mark" src="mark-live.png" alt="">
+      <div class="number">01</div>
+      <h3 class="serif">An agent starts.</h3>
+      <p>Claude Code or Codex gets to work. The lantern lights.</p>
+    </div>
+    <div>
+      <img class="mark" src="mark-lidclosed.png" alt="">
+      <div class="number">02</div>
+      <h3 class="serif">You close the lid.</h3>
+      <p>The laptop stays awake and locks. The screen goes dark.</p>
+    </div>
+    <div>
+      <img class="mark" src="mark-idle.png" alt="">
+      <div class="number">03</div>
+      <h3 class="serif">The work ends.</h3>
+      <p>Five quiet minutes later, your power settings go back.</p>
+    </div>
+    <div>
+      <img class="mark dim" src="mark-idle.png" alt="">
+      <div class="number">04</div>
+      <h3 class="serif">It sleeps.</h3>
+      <p>Your laptop does what the lid normally does.</p>
+    </div>
+  </div>
+</body>
+</html>

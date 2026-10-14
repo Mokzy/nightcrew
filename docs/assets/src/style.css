@@ -1,0 +1,40 @@
+/* Moonlit tokens, the same as App/Ui/Theme.cs. Dark only. */
+@font-face { font-family: "EB Garamond"; font-style: normal; src: url("../../../src/Nightcrew/Fonts/EBGaramond-Regular.ttf"); }
+@font-face { font-family: "EB Garamond"; font-style: italic; src: url("../../../src/Nightcrew/Fonts/EBGaramond-Italic.ttf"); }
+@font-face { font-family: "Figtree"; font-weight: 400; src: url("../../../src/Nightcrew/Fonts/Figtree-Regular.ttf"); }
+@font-face { font-family: "Figtree"; font-weight: 500; src: url("../../../src/Nightcrew/Fonts/Figtree-Medium.ttf"); }
+
+:root {
+  --night: #1E1F21;
+  --raised: #26282B;
+  --moon: #FFFFEB;
+  --muted: #C9C7B6;
+  --faint: #8C8A7C;
+  --hairline: rgba(255, 255, 235, 0.10);
+  --lavender: #F0D7FF;
+  --ink: #1A1A1A;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--night);
+  color: var(--moon);
+  font-family: "Figtree", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.serif { font-family: "EB Garamond", serif; font-weight: 400; }
+.serif em { font-style: italic; }
+
+/* A faint lavender glow, like the lantern lighting the room. */
+.glow {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(240, 215, 255, 0.16), rgba(240, 215, 255, 0));
+  pointer-events: none;
+}

@@ -1,0 +1,49 @@
+# Builds nightcrew.exe from a v* tag and publishes it as a GitHub release
+# with a SHA-256 file and a build attestation.
+# Before the first public release, pin each action below to its full commit
+# SHA, for example `actions/checkout@<40-char sha> # v7`.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet test -c Release
+      - run: dotnet build -c Release
+      - run: pwsh -File build/check-single-file.ps1
+      - name: Compute SHA-256
+        run: |
+          $hash = (Get-FileHash src/Nightcrew/bin/Release/net48/nightcrew.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path nightcrew.exe.sha256 -Value "$hash  nightcrew.exe`n" -Encoding ascii -NoNewline
+          Get-Content nightcrew.exe.sha256
+      - uses: actions/attest@v4
+        with:
+          subject-path: src/Nightcrew/bin/Release/net48/nightcrew.exe
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "Nightcrew $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" src/Nightcrew/bin/Release/net48/nightcrew.exe nightcrew.exe.sha256
+          gh release edit "$GITHUB_REF_NAME" --draft=false
