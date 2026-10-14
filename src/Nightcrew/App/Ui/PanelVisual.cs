@@ -156,9 +156,12 @@ public static class PanelVisual
         var grid = new Grid { Margin = padding };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // One line each: a long process name ends in an ellipsis instead of wrapping.
         var label = Text(left, 12.5, leftColour);
+        label.TextWrapping = TextWrapping.NoWrap;
         label.TextTrimming = TextTrimming.CharacterEllipsis;
         var value = Text(right, 12.5, rightColour);
+        value.TextWrapping = TextWrapping.NoWrap;
         value.Margin = new Thickness(12, 0, 0, 0);
         Grid.SetColumn(value, 1);
         grid.Children.Add(label);

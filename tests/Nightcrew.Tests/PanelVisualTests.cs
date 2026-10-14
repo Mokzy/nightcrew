@@ -75,11 +75,18 @@ public sealed class PanelVisualTests : IDisposable
     }
 
     [Fact]
-    public void A_long_holder_name_is_trimmed_instead_of_widening_the_panel()
+    public void A_long_holder_name_is_trimmed_to_one_line_instead_of_widening_the_panel()
     {
-        var view = View("working") with { Holders = [new Holder(new string('x', 120), "busy"), new Holder("Codex", "working")] };
-        var width = Sta.Run(() => AssetRenderer.RenderPanel(view, MarkKind.Lantern).PixelWidth);
-        Assert.Equal((PanelVisual.Width + 2 * PanelVisual.ShadowRoom) * AssetRenderer.Scale, width);
+        var shortName = View("working") with { Holders = [new Holder("python", "busy"), new Holder("Codex", "working")] };
+        var longName = shortName with { Holders = [new Holder(new string('x', 120), "busy"), new Holder("Codex", "working")] };
+        var (shortSize, longSize) = Sta.Run(() =>
+        {
+            var a = AssetRenderer.RenderPanel(shortName, MarkKind.Lantern);
+            var b = AssetRenderer.RenderPanel(longName, MarkKind.Lantern);
+            return ((a.PixelWidth, a.PixelHeight), (b.PixelWidth, b.PixelHeight));
+        });
+        Assert.Equal((PanelVisual.Width + 2 * PanelVisual.ShadowRoom) * AssetRenderer.Scale, longSize.Item1);
+        Assert.Equal(shortSize, longSize);
     }
 
     [Fact]
