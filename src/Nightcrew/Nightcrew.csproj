@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <AssemblyName>nightcrew</AssemblyName>
     <RootNamespace>Nightcrew</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -10,5 +11,14 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nightcrew.Tests" />
+    <!-- WinForms and WPF share type names (Color, FontFamily, Application), so each file says which it uses.
+         UseWPF drops System.IO from the implicit usings; nothing here uses System.Windows.Shapes, so it comes back. -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Both fonts are under the SIL Open Font License; see THIRD-PARTY-NOTICES.md. -->
+    <Resource Include="Fonts\*.ttf" />
   </ItemGroup>
 </Project>
