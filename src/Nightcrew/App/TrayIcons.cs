@@ -1,43 +1,34 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
+using Nightcrew.App.Ui;
+using Nightcrew.Core;
 
 namespace Nightcrew.App;
 
-/// <summary>Three 16x16 dots drawn at runtime, so the exe needs no .ico files.</summary>
+/// <summary>
+/// Tray icons drawn from <see cref="MarkGeometry"/> at the size Windows asks for, so they follow display scaling.
+/// Each one is made once per mark, state, size and taskbar theme.
+/// </summary>
 public sealed class TrayIcons : IDisposable
 {
-    [DllImport("user32.dll")]
-    private static extern bool DestroyIcon(IntPtr handle);
+    private readonly Dictionary<(MarkKind, MarkState, int, bool), Icon> _icons = [];
 
-    private bool _disposed;
-
-    public Icon Idle { get; } = Dot(Color.FromArgb(150, 150, 150));
-    public Icon Live { get; } = Dot(Color.FromArgb(46, 160, 67));
-    public Icon LidClosed { get; } = Dot(Color.FromArgb(47, 129, 247));
-
-    private static Icon Dot(Color color)
+    /// <summary>UI thread only, because the marks are drawn with WPF.</summary>
+    public Icon Get(MarkKind kind, MarkState state, int pixels, bool lightTaskbar)
     {
-        using var bitmap = new Bitmap(16, 16);
-        using (var graphics = Graphics.FromImage(bitmap))
-        using (var brush = new SolidBrush(color))
-        {
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.FillEllipse(brush, 2, 2, 12, 12);
-        }
-        return Icon.FromHandle(bitmap.GetHicon());
+        var key = (kind, state, pixels, lightTaskbar);
+        if (_icons.TryGetValue(key, out var icon)) return icon;
+
+        var ink = lightTaskbar ? Theme.Night : Theme.Moon;
+        var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(kind, state, pixels, ink));
+        var ico = IcoWriter.Write([IcoWriter.Frame.Bitmap(pixels, bgra)]);
+        icon = new Icon(new MemoryStream(ico), pixels, pixels); // owns its handle, so Dispose frees it
+        _icons[key] = icon;
+        return icon;
     }
 
-    /// <summary>Icon.FromHandle does not own its handle, so each one is destroyed here.</summary>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        foreach (var icon in new[] { Idle, Live, LidClosed })
-        {
-            var handle = icon.Handle;
-            icon.Dispose();
-            DestroyIcon(handle);
-        }
+        foreach (var icon in _icons.Values) icon.Dispose();
+        _icons.Clear();
     }
 }

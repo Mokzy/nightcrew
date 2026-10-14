@@ -14,7 +14,7 @@ public interface IProcessTable
 /// Busy while a tool process started by an agent, or a self-CPU agent itself, uses CPU.
 /// CPU is a percent of one core; it is not divided by the processor count.
 /// </summary>
-public sealed class AgentTreeSignal(IProcessTable table, Settings settings) : IBusySignal
+public sealed class AgentTreeSignal(IProcessTable table, Settings settings) : IBusySignal, IHolderSource
 {
     private Dictionary<(int Pid, DateTime Start), (TimeSpan Cpu, TimeSpan At)> _baselines = [];
 
@@ -22,6 +22,9 @@ public sealed class AgentTreeSignal(IProcessTable table, Settings settings) : IB
 
     /// <summary>The process that made the most recent busy sample, e.g. "python (pid 1234)".</summary>
     public string? LastBusyProcess { get; private set; }
+
+    /// <summary>Busy processes of the last busy sample: "Codex" · "working" for self-CPU agents, "python" · "busy" for tools.</summary>
+    public IReadOnlyList<Holder> Holders { get; private set; } = [];
 
     public bool Sample(TimeSpan now)
     {
@@ -59,7 +62,7 @@ public sealed class AgentTreeSignal(IProcessTable table, Settings settings) : IB
             }
         }
 
-        var busy = false;
+        var busy = new List<ProcessEntry>();
         var next = new Dictionary<(int Pid, DateTime Start), (TimeSpan Cpu, TimeSpan At)>();
         foreach (var (process, threshold) in watched.Values)
         {
@@ -68,12 +71,20 @@ public sealed class AgentTreeSignal(IProcessTable table, Settings settings) : IB
             next[key] = (current.Cpu, now);
             if (!_baselines.TryGetValue(key, out var last) || now <= last.At) continue;
             var percent = (current.Cpu - last.Cpu).TotalMilliseconds / (now - last.At).TotalMilliseconds * 100;
-            if (busy || percent < threshold) continue;
-            busy = true;
-            LastBusyProcess = $"{process.Name} (pid {process.Pid})";
+            if (percent < threshold) continue;
+            if (busy.Count == 0) LastBusyProcess = $"{process.Name} (pid {process.Pid})";
+            busy.Add(process);
         }
 
         _baselines = next; // processes not seen this sample (exited or no longer watched) are dropped
-        return busy;
+        if (busy.Count == 0) return false;
+        Holders = busy
+            .Select(process => selfCpuAgents.Contains(process.Name)
+                ? new Holder(AgentNames.Display(process.Name), "working")
+                : new Holder(process.Name, "busy"))
+            .GroupBy(holder => holder.Label, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        return true;
     }
 }

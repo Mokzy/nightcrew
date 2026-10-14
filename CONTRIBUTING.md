@@ -41,8 +41,8 @@ holds any other file.
 
 - Don't add NuGet runtime packages. PolySharp is allowed because it only
   generates source at build time.
-- Don't add `.ico` or other resource files next to the exe. Icons are drawn
-  in code.
+- Don't add files next to the exe. The fonts and the app icon are compiled
+  into it, and the tray icons are drawn in code from `MarkGeometry`.
 - JSON goes through `Nightcrew.Core.Json` (DataContractJsonSerializer).
   Persisted classes need `[DataContract]` and `[DataMember]`.
 
@@ -64,7 +64,34 @@ The app targets `net48` with C# 14.
 |---|---|
 | `Nightcrew.Core` | Pure logic with no P/Invoke, unit-tested with fakes |
 | `Nightcrew.Platform` | Thin Windows wrappers (P/Invoke and WinForms) |
-| `Nightcrew.App` | Tray UI and wiring |
+| `Nightcrew.App` | Tray icon, menu and wiring |
+| `Nightcrew.App.Ui` | The WPF panel, the marks, the theme and the asset renderer |
+
+## Words and looks
+
+Everything Nightcrew shows, from the panel to the tooltip and the menu, uses
+sentence case, short plain sentences and contractions. No exclamation marks,
+no "please", no "successfully". Say what happens, not how. The panel's words
+all come from `PanelModel`, so they're unit-tested.
+
+Nightcrew is dark only. Colours and fonts live in `App/Ui/Theme.cs`, and the
+README pages in `docs/assets/src/style.css` use the same values.
+
+## Icon and README images
+
+The app icon (`src/Nightcrew/nightcrew.ico`) and the images in `docs/assets`
+are made from the real code. After changing the marks, the panel or the pages
+in `docs/assets/src`, build and render them again:
+
+```bash
+dotnet build -c Release
+powershell -ExecutionPolicy Bypass -File build/render-assets.ps1
+```
+
+The script loads `nightcrew.exe` as a library and calls `AssetRenderer`, so
+the tray app never starts. It needs Windows PowerShell 5.1 and Google Chrome.
+GitHub's social preview, `docs/assets/social.png`, is uploaded by hand in the
+repository settings.
 
 ## Tests
 

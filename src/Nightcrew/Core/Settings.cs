@@ -22,6 +22,7 @@ public sealed class Settings
     [DataMember] public double ToolCpuPercent { get; set; }
     [DataMember] public double GpuPercent { get; set; }
     [DataMember] public int SampleSeconds { get; set; }
+    [DataMember] public string Mark { get; set; } = MarkKinds.LanternName;
 
     [OnDeserializing]
     private void OnDeserializing(StreamingContext context) => ApplyDefaults();
@@ -43,5 +44,6 @@ public sealed class Settings
         ToolCpuPercent = 10;
         GpuPercent = 30;
         SampleSeconds = 10;
+        Mark = MarkKinds.LanternName;
     }
 }

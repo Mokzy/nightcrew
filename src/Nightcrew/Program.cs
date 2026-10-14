@@ -105,17 +105,32 @@ internal static class Program
         IKeepAwake keepAwake = dryRun ? new DryRunKeepAwake(log) : realKeepAwake;
         var journal = new RestoreJournal(policy, AppPaths.RestoreFile, log);
 
+        var grace = TimeSpan.FromMinutes(settings.GraceMinutes);
         IBusySignal[] signals =
         [
-            new TranscriptSignal(new JsonlFileScanner(), settings.TranscriptRoots, settings.IgnorePathContains),
+            new TranscriptSignal(new JsonlFileScanner(), settings.TranscriptRoots, settings.IgnorePathContains, grace),
             new AgentTreeSignal(new ToolhelpProcessTable(), settings),
-            new GpuSignal(gpu, settings.GpuPercent),
+            new GpuSignal(gpu, settings.GpuPercent, ProcessName),
         ];
-        var activity = new ActivityMonitor(signals, TimeSpan.FromMinutes(settings.GraceMinutes));
+        var activity = new ActivityMonitor(signals, grace);
         var controller = new Controller(settings);
         var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, new SystemClock());
 
         using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log);
         Application.Run(tray);
+    }
+
+    /// <summary>For the panel's holder rows; null when the process has already gone.</summary>
+    private static string? ProcessName(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.ProcessName;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }
