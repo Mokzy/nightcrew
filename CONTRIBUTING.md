@@ -117,5 +117,6 @@ Changes to lid, sleep or hibernate behaviour also need the relevant steps of
 
 Push a tag such as `v1.0.0`. The release workflow tests and builds the exe,
 checks that it's a single file, writes `nightcrew.exe.sha256`, attests the
-build and publishes the GitHub release. Pin the workflow's actions to full
-commit SHAs before the first public release.
+build and publishes the GitHub release. Workflow actions are pinned to full
+commit SHAs; when you update one, pin the new release's SHA and name the
+release in the comment.
