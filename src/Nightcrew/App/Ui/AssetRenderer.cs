@@ -25,16 +25,20 @@ public static class AssetRenderer
             LidAction.Sleep, false, true, EngineWarning.None), 20)),
     ];
 
-    /// <summary>Writes panel-quiet.png, panel-working.png and panel-paused.png at 2x.</summary>
+    /// <summary>Writes panel-quiet.png, panel-working.png, panel-paused.png and panel-settings.png at 2x.</summary>
     public static IReadOnlyList<string> WritePanels(string directory, MarkKind mark = MarkKind.Lantern)
     {
         Directory.CreateDirectory(directory);
-        return SamplePanels.Select(sample =>
+        var written = SamplePanels.Select(sample =>
         {
             var path = Path.Combine(directory, $"panel-{sample.Name}.png");
             File.WriteAllBytes(path, MarkGeometry.ToPng(RenderPanel(sample.View, mark)));
             return path;
         }).ToList();
+        var settings = Path.Combine(directory, "panel-settings.png");
+        File.WriteAllBytes(settings, MarkGeometry.ToPng(Render(PanelVisual.BuildSettings(SettingsModel.From(new Settings()), actions: null))));
+        written.Add(settings);
+        return written;
     }
 
     /// <summary>Writes the app's multi-size .ico, which the project sets as its ApplicationIcon.</summary>
@@ -66,9 +70,11 @@ public static class AssetRenderer
         return written;
     }
 
-    public static BitmapSource RenderPanel(PanelView view, MarkKind mark)
+    public static BitmapSource RenderPanel(PanelView view, MarkKind mark) => Render(PanelVisual.Build(view, mark, actions: null));
+
+    /// <summary>Lays out <paramref name="element"/> at its natural size and draws it at 2x.</summary>
+    public static BitmapSource Render(FrameworkElement element)
     {
-        var element = PanelVisual.Build(view, mark, actions: null);
         element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         element.Arrange(new Rect(element.DesiredSize));
         element.UpdateLayout();

@@ -62,16 +62,20 @@ your battery, and what happens when the work is done. **Hold awake** keeps the
 laptop awake until you turn it off. **Pause** hands the lid back to Windows
 until you resume.
 
-Right-click the lantern, or click **Settings** in the panel, for the menu:
+<br clear="right">
 
-- **Hold awake** and **Pause**, as in the panel.
+<img src="docs/assets/panel-settings.png" alt="The Nightcrew settings page" width="352" align="right">
+
+Click **Settings** in the panel, or right-click the lantern, for the settings
+page. Changes save as soon as you make them. **‹** or Esc goes back.
+
 - **Battery floor.** 10, 15, 20 or 30%, or Off.
 - **Lid-closed limit.** 2, 4, 8 or 12 hours, or Off.
 - **Lock when lid closes.**
 - **Start at login.**
 - **Tray mark.** The lantern, or a moon and star.
 - **Open log.**
-- **Quit.** Puts your settings back, then exits.
+- **Quit Nightcrew.** Puts your settings back, then exits.
 
 <br clear="right">
 

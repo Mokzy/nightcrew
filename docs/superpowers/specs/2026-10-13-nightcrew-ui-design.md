@@ -255,7 +255,7 @@ state, then switch `Mark` between `lantern` and `moon`.
 - built-in presets for other agents
 - animations beyond the panel fade
 - a finishing panel state
-- a settings window (settings stay in the right-click menu and `settings.json`)
+- a separate settings window (section 11 adds a settings page inside the panel instead)
 
 ## 10. Changes while building (14 October 2026)
 
@@ -288,3 +288,45 @@ state, then switch `Mark` between `lantern` and `moon`.
   start again."
 - **The panel follows its size.** It is placed again whenever rows come and
   go, so it stays against the taskbar.
+
+## 11. Settings page (14 October 2026)
+
+The owner found the grey right-click menu out of place, and clicking
+**Settings** hid the panel. Owner decisions:
+
+- **A page inside the panel.** **Settings** turns the panel into a settings
+  page in place; **‹** or Esc goes back. Nothing disappears.
+- **Right-click opens the panel on the settings page.** The WinForms menu is
+  gone. Clicking the same button again closes the panel; the other button
+  switches page.
+- **No explanations under the settings.**
+
+**The page,** top to bottom, in the panel's frame and tokens:
+
+| Row | Control |
+|---|---|
+| ‹ Settings | back to the main page |
+| Battery floor | segmented: 10%, 15%, 20%, 30%, Off |
+| Lid-closed limit | segmented: 2 h, 4 h, 8 h, 12 h, Off |
+| Lock when lid closes | switch |
+| Start at login | switch |
+| Tray mark | segmented: Lantern, Moon and star |
+| Open log · Quit Nightcrew | text links |
+
+- **Look:** the chosen segment and a switch that is on fill `Lavender` with
+  `Ink`; the track is `NightRaised`; hairlines separate the groups.
+- **Values set by hand:** a value set by hand in `settings.json` (for example a
+  25% floor) shows as its own segment, in order.
+- **Saving:** every change saves to `settings.json` and takes effect at once,
+  through the same code the menu used (Start at login also updates the Run key
+  outside a dry run).
+
+**Architecture:**
+- **`SettingsModel`** (Core, pure, tested) turns `Settings` into a
+  `SettingsPage` of `Choice<T>` rows.
+- **`PanelVisual.BuildSettings`** draws the page, and `SettingsActions` carries
+  each control's new value back.
+- **`PanelWindow`** holds both pages and swaps them with `ShowPage`, and
+  `TrayApp` applies each change.
+- **README:** `panel-settings.png` shows the page.
+

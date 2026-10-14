@@ -69,7 +69,7 @@ The app targets `net48` with C# 14.
 
 ## Words and looks
 
-Everything Nightcrew shows, from the panel to the tooltip and the menu, uses
+Everything Nightcrew shows, from the panel and its settings page to the tooltip, uses
 sentence case, short plain sentences and contractions. No exclamation marks,
 no "please", no "successfully". Say what happens, not how. The panel's words
 all come from `PanelModel`, so they're unit-tested.
