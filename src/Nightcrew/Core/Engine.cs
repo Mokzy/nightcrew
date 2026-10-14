@@ -1,7 +1,7 @@
 namespace Nightcrew.Core;
 
 /// <summary>What needs the owner's attention, most important first.</summary>
-public enum EngineWarning { None, PolicyBlocks, ArmBackoff, RestorePending }
+public enum EngineWarning { None, PolicyBlocks, ArmBackoff, RestorePending, Stopped }
 
 /// <summary>Everything the tray and the panel show, taken at the end of a tick.</summary>
 public sealed record EngineSnapshot(Mode Mode, LidState Lid, bool Live, IReadOnlyList<Holder> Holders, PowerSource Source,
@@ -61,6 +61,7 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
             var warning = !policyAllows ? EngineWarning.PolicyBlocks
                 : _armBlockedUntil is { } blockedUntil && now < blockedUntil ? EngineWarning.ArmBackoff
                 : controller.Mode != Mode.Armed && journal.HasRecord ? EngineWarning.RestorePending
+                : controller.Spent ? EngineWarning.Stopped
                 : EngineWarning.None;
             Snapshot = new EngineSnapshot(controller.Mode, Lid, activity.Live, activity.Holders, source, battery,
                 ownerLid, activity.Hold, Paused, warning);

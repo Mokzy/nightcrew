@@ -276,3 +276,15 @@ state, then switch `Mark` between `lantern` and `moon`.
   0.6 MB each.
 - **Header mark.** 20 px with the 1.5-unit stroke, because the panel is never
   shown smaller than that.
+- **Lit only while armed** (from the final review). The mark lights, and the
+  panel says "Working *through the night.*", only while Nightcrew is holding
+  the laptop awake. When an agent is live but Nightcrew can't arm (a policy
+  block, a failed arm backing off, or a stop at the battery floor or
+  lid-closed limit), the panel says "Working *with the lid open.*" and "Nightcrew
+  can't keep the laptop awake with the lid closed right now.", shows "When the
+  lid closes", and the mark stays unlit. The tooltip reads `Nightcrew · working,
+  keep the lid open`. The stop has its own warning, after the restore one:
+  "Stopped early at the battery floor or lid-closed limit. Open the lid to
+  start again."
+- **The panel follows its size.** It is placed again whenever rows come and
+  go, so it stays against the taskbar.

@@ -51,12 +51,26 @@ public sealed class PanelModelTests
     }
 
     [Fact]
-    public void Live_but_not_armed_still_reads_as_working()
+    public void Live_but_not_armed_says_to_keep_the_lid_open_and_leaves_the_mark_unlit()
     {
-        var view = PanelModel.From(Snap(Mode.Idle, live: true, warning: EngineWarning.PolicyBlocks), 20);
+        var holders = new[] { new Holder("Claude Code", "1 session") };
+        var view = PanelModel.From(Snap(Mode.Idle, live: true, warning: EngineWarning.PolicyBlocks, holders: holders), 20);
 
         Assert.Equal(PanelState.Working, view.State);
+        Assert.Equal("Working ", view.Headline);
+        Assert.Equal("with the lid open.", view.HeadlineItalic);
+        Assert.Equal("Nightcrew can't keep the laptop awake with the lid closed right now.", view.SubLine);
+        Assert.Equal(holders, view.Holders);
+        Assert.Equal([new PanelFact("Battery", "81%"), new PanelFact("When the lid closes", "Sleep")], view.Facts);
+        Assert.Equal(MarkState.Idle, view.Mark);
+        Assert.Equal("Nightcrew · working, keep the lid open", view.Tooltip);
         Assert.Equal("Windows policy blocks lid changes here. Keep the lid open.", view.Warning);
+    }
+
+    [Fact]
+    public void Live_but_not_armed_with_the_lid_closed_still_leaves_the_mark_unlit()
+    {
+        Assert.Equal(MarkState.Idle, PanelModel.From(Snap(Mode.Idle, live: true, lid: LidState.Closed), 20).Mark);
     }
 
     [Fact]
@@ -104,6 +118,7 @@ public sealed class PanelModelTests
     [InlineData(EngineWarning.PolicyBlocks, false, "Windows policy blocks lid changes here. Keep the lid open.")]
     [InlineData(EngineWarning.ArmBackoff, true, "Couldn't change power settings. Trying again in a few minutes.")]
     [InlineData(EngineWarning.RestorePending, true, "Your power settings aren't back yet. Retrying.")]
+    [InlineData(EngineWarning.Stopped, true, "Stopped early at the battery floor or lid-closed limit. Open the lid to start again.")]
     [InlineData(EngineWarning.None, true, "The safety net isn't installed. Settings may stay changed if Nightcrew crashes.")]
     public void One_warning_shows_most_important_first(EngineWarning warning, bool watchdogMissing, string expected)
     {

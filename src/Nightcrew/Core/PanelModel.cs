@@ -37,7 +37,7 @@ public static class PanelModel
                 [], [battery], snapshot.Hold, "Resume", warning, MarkState.Idle, Tooltip("paused"));
         }
 
-        if (snapshot.Mode == Mode.Armed || snapshot.Live)
+        if (snapshot.Mode == Mode.Armed)
         {
             var mark = snapshot.Lid == LidState.Closed ? MarkState.LidClosed : MarkState.Live;
             var first = snapshot.Holders.Count > 0 ? $" ({snapshot.Holders[0].Label})" : "";
@@ -45,6 +45,16 @@ public static class PanelModel
                 "Close the lid. Your laptop keeps working, then does what your lid normally does.",
                 snapshot.Holders, [battery, new PanelFact("When done", WhenDone(snapshot.OwnerLid))],
                 snapshot.Hold, "Pause", warning, mark, Tooltip("working" + first));
+        }
+
+        if (snapshot.Live)
+        {
+            // An agent is working but Nightcrew isn't holding the laptop awake: a policy block, a failed arm backing
+            // off, or a stop at the battery floor or lid-closed limit. The mark stays unlit and the lid must stay open.
+            return new PanelView(PanelState.Working, "Working ", "with the lid open.",
+                "Nightcrew can't keep the laptop awake with the lid closed right now.",
+                snapshot.Holders, [battery, new PanelFact("When the lid closes", LidCloses(snapshot.OwnerLid))],
+                snapshot.Hold, "Pause", warning, MarkState.Idle, Tooltip("working, keep the lid open"));
         }
 
         return new PanelView(PanelState.Quiet, "All quiet.", null,
@@ -78,6 +88,7 @@ public static class PanelModel
         EngineWarning.PolicyBlocks => "Windows policy blocks lid changes here. Keep the lid open.",
         EngineWarning.ArmBackoff => "Couldn't change power settings. Trying again in a few minutes.",
         EngineWarning.RestorePending => "Your power settings aren't back yet. Retrying.",
+        EngineWarning.Stopped => "Stopped early at the battery floor or lid-closed limit. Open the lid to start again.",
         _ => watchdogMissing ? "The safety net isn't installed. Settings may stay changed if Nightcrew crashes." : null,
     };
 

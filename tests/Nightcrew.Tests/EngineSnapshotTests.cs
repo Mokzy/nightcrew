@@ -95,6 +95,27 @@ public sealed class EngineSnapshotTests : IDisposable
     }
 
     [Fact]
+    public void Stopping_at_the_battery_floor_is_a_warning_until_the_lid_opens()
+    {
+        var controller = new Controller(new Settings { BatteryFloorPercent = 90 }); // the fake battery is at 80% on DC
+        var journal = new RestoreJournal(_policy, Path.Combine(_dir, "floor.json"), _log);
+        var engine = new Engine(_activity, controller, journal, _policy, _keepAwake, _power, _log, _clock) { Lid = LidState.Closed };
+        _signal.Busy = true;
+
+        engine.Tick(); // arms
+        _clock.Advance(TimeSpan.FromSeconds(10));
+        engine.Tick(); // the floor stops it
+
+        Assert.Equal(Mode.Idle, engine.Snapshot.Mode);
+        Assert.Equal(EngineWarning.Stopped, engine.Snapshot.Warning);
+
+        engine.Lid = LidState.Open;
+        _clock.Advance(TimeSpan.FromSeconds(10));
+        engine.Tick();
+        Assert.Equal(EngineWarning.None, engine.Snapshot.Warning);
+    }
+
+    [Fact]
     public void Holders_are_logged_when_their_labels_change_not_on_every_tick()
     {
         _signal.Busy = true;

@@ -47,10 +47,15 @@ hash with the one in that file.
 
 The lantern in the tray shows what Nightcrew is doing:
 
-- **Unlit.** No agent is working. Close the lid and Windows does what it
-  normally does.
-- **Flame.** An agent is working. Close the lid and the laptop keeps going.
-- **Filled.** An agent is working and the lid is closed.
+- **Unlit.** Nightcrew isn't keeping the laptop awake. Close the lid and
+  Windows does what it normally does.
+- **Flame.** An agent is working and Nightcrew is keeping the laptop awake.
+  Close the lid and it keeps going.
+- **Filled.** The same, with the lid closed.
+
+If an agent is working but Nightcrew can't keep the laptop awake, for example
+because a policy blocks it, the lantern stays unlit and the panel tells you to
+keep the lid open.
 
 Click the lantern to open the panel. It says who is keeping the laptop awake,
 your battery, and what happens when the work is done. **Hold awake** keeps the
