@@ -49,4 +49,14 @@ public sealed class SettingsModelTests
         Assert.Equal(["2 h", "4 h", "6 h", "8 h", "12 h", "Off"], page.LidClosedLimit.Select(choice => choice.Label));
         Assert.Equal("6 h", page.LidClosedLimit.Single(choice => choice.Selected).Label);
     }
+
+    [Fact]
+    public void A_negative_value_set_by_hand_counts_as_off()
+    {
+        var page = SettingsModel.From(new Settings { BatteryFloorPercent = -5, LidClosedCapHours = -1 });
+
+        Assert.Equal(["10%", "15%", "20%", "30%", "Off"], page.BatteryFloor.Select(choice => choice.Label));
+        Assert.Equal("Off", page.BatteryFloor.Single(choice => choice.Selected).Label);
+        Assert.Equal("Off", page.LidClosedLimit.Single(choice => choice.Selected).Label);
+    }
 }

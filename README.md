@@ -75,7 +75,7 @@ page. Changes save as soon as you make them. **‹** or Esc goes back.
 - **Start at login.**
 - **Tray mark.** The lantern, or a moon and star.
 - **Open log.**
-- **Quit Nightcrew.** Puts your settings back, then exits.
+- **Quit Nightcrew.** Puts your power settings back, then exits.
 
 <br clear="right">
 

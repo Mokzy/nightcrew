@@ -28,9 +28,13 @@ public static class SettingsModel
             [new("Lantern", MarkKind.Lantern, mark == MarkKind.Lantern), new("Moon and star", MarkKind.MoonAndStar, mark == MarkKind.MoonAndStar)]);
     }
 
-    /// <summary>The usual values then Off (0). A value set by hand in settings.json gets its own choice, in order.</summary>
-    private static List<Choice<int>> Choices(int[] usual, int current, Func<int, string> label)
+    /// <summary>
+    /// The usual values then Off (0). A value set by hand in settings.json gets its own choice, in order; zero or less
+    /// is Off, as the controller treats it.
+    /// </summary>
+    private static List<Choice<int>> Choices(int[] usual, int setting, Func<int, string> label)
     {
+        var current = Math.Max(0, setting);
         var values = usual.ToList();
         if (current > 0 && !values.Contains(current))
         {

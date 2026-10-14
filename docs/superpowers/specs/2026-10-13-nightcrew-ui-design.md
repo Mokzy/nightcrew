@@ -106,8 +106,8 @@ and 1.5 units at 24 px and above.
   sits beside the tray, against the taskbar edge, whichever side the taskbar
   is on.
 - **Animation:** it fades and slides 8 px over 120 ms.
-- **Right-click** still opens the existing settings menu. The panel's
-  "Settings" link opens that same menu.
+- **Right-click** opens the panel on its settings page, and the panel's "Settings"
+  link opens that page (section 11; this first draft kept the WinForms menu).
 - **Updates:** the panel refreshes after every engine tick while it's open.
 
 ### 5.2 Content
@@ -271,7 +271,8 @@ state, then switch `Mark` between `lantern` and `moon`.
   `ApplicationIcon`. A test checks its sizes against `MarkGeometry`.
 - **Light taskbars.** The tray mark uses `Night` ink and `LavenderDeep` when
   Windows' taskbar is light, read from the registry on each update.
-- **Menu.** The `Mark` setting also has a **Tray mark** submenu.
+- **Tray mark.** The `Mark` setting is also a choice on the settings page
+  (section 11; at first it was a menu item).
 - **Exe size.** About 1.5 MB, because EB Garamond's two files are about
   0.6 MB each.
 - **Header mark.** 20 px with the 1.5-unit stroke, because the panel is never
@@ -297,8 +298,11 @@ The owner found the grey right-click menu out of place, and clicking
 - **A page inside the panel.** **Settings** turns the panel into a settings
   page in place; **‹** or Esc goes back. Nothing disappears.
 - **Right-click opens the panel on the settings page.** The WinForms menu is
-  gone. Clicking the same button again closes the panel; the other button
-  switches page.
+  gone. Clicking the tray icon takes focus from an open panel, which hides it,
+  so the same button leaves it closed and the other button reopens it on the
+  other page (`PanelToggle`).
+- **A way out.** If the panel can't open, a right click shows a small plain
+  menu with Open log and Quit Nightcrew, so Nightcrew can always be quit.
 - **No explanations under the settings.**
 
 **The page,** top to bottom, in the panel's frame and tokens:
@@ -316,10 +320,10 @@ The owner found the grey right-click menu out of place, and clicking
 - **Look:** the chosen segment and a switch that is on fill `Lavender` with
   `Ink`; the track is `NightRaised`; hairlines separate the groups.
 - **Values set by hand:** a value set by hand in `settings.json` (for example a
-  25% floor) shows as its own segment, in order.
-- **Saving:** every change saves to `settings.json` and takes effect at once,
-  through the same code the menu used (Start at login also updates the Run key
-  outside a dry run).
+  25% floor) shows as its own segment, in order; zero or less shows as Off.
+- **Saving:** every change saves to `settings.json` and takes effect at once.
+  Start at login writes the Run key first (outside a dry run), so a failed
+  write leaves the setting unchanged.
 
 **Architecture:**
 - **`SettingsModel`** (Core, pure, tested) turns `Settings` into a

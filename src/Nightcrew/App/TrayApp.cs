@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Windows.Forms;
 using Nightcrew.App.Ui;
 using Nightcrew.Core;
@@ -22,6 +23,7 @@ public sealed class TrayApp : ApplicationContext
     private readonly TrayIcons _icons = new();
     private readonly NotifyIcon _tray = new();
     private readonly PanelWindow _panel;
+    private ContextMenuStrip? _fallback;
     private readonly SynchronizationContext _ui;
     private readonly TimeSpan _period;
     private readonly System.Threading.Timer _timer;
@@ -56,7 +58,7 @@ public sealed class TrayApp : ApplicationContext
                 LockOnLidClose: on => ChangeSetting("Lock when lid closes", () => _settings.LockOnLidClose = on),
                 StartAtLogin: SetStartAtLogin,
                 Mark: kind => ChangeSetting("Tray mark", () => _settings.Mark = MarkKinds.Name(kind)),
-                OpenLog: () => Guarded("Open log", () => Process.Start(AppPaths.LogFile)?.Dispose()),
+                OpenLog: OpenLog,
                 Quit: Quit));
         UiSafety.Install(_panel.Dispatcher, log);
 
@@ -98,6 +100,7 @@ public sealed class TrayApp : ApplicationContext
             Shutdown();
             _panel.Close();
             _tray.Dispose();
+            _fallback?.Dispose();
             _icons.Dispose();
         }
         base.Dispose(disposing);
@@ -152,47 +155,80 @@ public sealed class TrayApp : ApplicationContext
     }
 
     /// <summary>
-    /// Left click opens the panel on its main page, right click on the settings page. Clicking the icon again closes
-    /// it; the other button switches page.
+    /// Left click opens the panel on its main page, right click on the settings page; see <see cref="PanelToggle"/>.
+    /// If the panel can't open, a right click shows a small menu with Open log and Quit, so Nightcrew can always be quit.
     /// </summary>
     private void OnTrayClick(object? sender, MouseEventArgs e)
     {
-        if (e.Button is not (MouseButtons.Left or MouseButtons.Right) || _closed || _view is null) return;
+        if (e.Button is not (MouseButtons.Left or MouseButtons.Right) || _closed) return;
         var settings = e.Button == MouseButtons.Right;
         try
         {
-            if (_panel.IsVisible && _panel.OnSettings == settings)
+            if (_view is null) throw new InvalidOperationException("no engine state yet");
+            switch (PanelToggle.Decide(_panel.IsVisible, _panel.OnSettings, _panel.JustHid, settings))
             {
-                _panel.HidePanel();
-            }
-            else if (_panel.IsVisible)
-            {
-                _panel.ShowPage(settings);
-            }
-            else if (!_panel.JustHid)
-            {
-                _panel.ShowPage(settings);
-                RenderPanel();
-                _panel.ShowNear(Cursor.Position);
+                case PanelClick.Close:
+                    _panel.HidePanel();
+                    break;
+                case PanelClick.SwitchPage:
+                    _panel.ShowPage(settings);
+                    break;
+                case PanelClick.Open:
+                    _panel.ShowPage(settings);
+                    RenderPanel();
+                    _panel.ShowNear(Cursor.Position);
+                    break;
             }
         }
         catch (Exception ex)
         {
             _log.Warn($"Panel failed: {ex.Message}");
+            if (settings) ShowFallbackMenu();
         }
     }
+
+    /// <summary>The way out when the panel can't open: a plain menu with Open log and Quit, at the tray.</summary>
+    private void ShowFallbackMenu()
+    {
+        try
+        {
+            if (_fallback is null)
+            {
+                _fallback = new ContextMenuStrip();
+                _fallback.Items.Add("Open log", null, (_, _) => OpenLog());
+                _fallback.Items.Add("Quit Nightcrew", null, (_, _) => Quit());
+            }
+            // NotifyIcon's own ShowContextMenu takes the foreground first, so the menu closes on a click elsewhere.
+            _tray.ContextMenuStrip = _fallback;
+            typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_tray, null);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Fallback menu failed: {ex.Message}");
+        }
+        finally
+        {
+            _tray.ContextMenuStrip = null; // right click goes back to opening the settings page
+        }
+    }
+
+    private void OpenLog() => Guarded("Open log", () => Process.Start(AppPaths.LogFile)?.Dispose());
 
     private void SetHold(bool on) => Apply("Hold awake", () => _activity.Hold = on);
 
     private void SetPaused(bool on) => Apply("Pause", () => _engine.Paused = on);
 
+    /// <summary>The Run key first: if writing it fails, the setting stays as it was and nothing is saved.</summary>
     private void SetStartAtLogin(bool on) => ChangeSetting("Start at login", () =>
     {
-        _settings.StartAtLogin = on;
         if (!_dryRun) Autostart.Set(on, _exePath);
+        _settings.StartAtLogin = on;
     });
 
-    /// <summary>Changes and saves a setting under the lock, ticks so it takes effect, and redraws the page at once.</summary>
+    /// <summary>
+    /// Changes and saves a setting under the lock, ticks so it takes effect, and shows it at once: the page, the tray
+    /// mark and the main page's facts, without waiting for the tick.
+    /// </summary>
     private void ChangeSetting(string what, Action change)
     {
         Apply(what, () =>
@@ -200,7 +236,7 @@ public sealed class TrayApp : ApplicationContext
             change();
             Save();
         });
-        RenderPanel();
+        Show(_snapshot);
     }
 
     private void Guarded(string what, Action action)
@@ -227,10 +263,17 @@ public sealed class TrayApp : ApplicationContext
 
     private void Save() => SettingsStore.Save(AppPaths.SettingsFile, _settings);
 
+    /// <summary>Exits even if putting the settings back fails, so the process never lingers without its icon.</summary>
     private void Quit()
     {
-        Shutdown();
-        ExitThread();
+        try
+        {
+            Shutdown();
+        }
+        finally
+        {
+            ExitThread();
+        }
     }
 
     /// <summary>Stops ticking and puts the owner's power settings back, once.</summary>
