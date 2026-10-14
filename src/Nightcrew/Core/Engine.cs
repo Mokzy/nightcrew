@@ -1,5 +1,16 @@
 namespace Nightcrew.Core;
 
+/// <summary>What needs the owner's attention, most important first.</summary>
+public enum EngineWarning { None, PolicyBlocks, ArmBackoff, RestorePending }
+
+/// <summary>Everything the tray and the panel show, taken at the end of a tick.</summary>
+public sealed record EngineSnapshot(Mode Mode, LidState Lid, bool Live, IReadOnlyList<Holder> Holders, PowerSource Source,
+    int? BatteryPercent, LidAction OwnerLid, bool Hold, bool Paused, EngineWarning Warning)
+{
+    public static EngineSnapshot Initial { get; } =
+        new(Mode.Idle, LidState.Unknown, false, [], PowerSource.AC, null, LidAction.Sleep, false, false, EngineWarning.None);
+}
+
 /// <summary>One tick: sample activity, ask the controller, carry out its commands.</summary>
 public sealed class Engine(ActivityMonitor activity, Controller controller, RestoreJournal journal,
     IPowerPolicy policy, IKeepAwake keepAwake, ISystemPower power, ILog log, IClock clock)
@@ -14,12 +25,16 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
     private TimeSpan _restoreTriedAt = clock.Now; // so the first retry comes at least a minute after startup
     private TimeSpan? _armBlockedUntil;
     private volatile bool _suspended;
+    private string? _loggedHolders;
 
     public LidState Lid { get; set; }
 
     public bool Paused { get; set; }
 
     public string Status => activity.Reason is { } reason ? $"{controller.Status} ({reason})" : controller.Status;
+
+    /// <summary>Taken at the end of every tick; <see cref="EngineSnapshot.Initial"/> before the first one.</summary>
+    public EngineSnapshot Snapshot { get; private set; } = EngineSnapshot.Initial;
 
     /// <summary>Never throws: failures are logged, and a failing command does not stop the ones after it.</summary>
     public void Tick()
@@ -33,12 +48,22 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
                 controller.OnResume();
             }
             activity.Sample(now);
+            LogHoldersWhenTheyChange(activity.Holders);
             var source = power.Source;
+            var battery = power.BatteryPercent;
             var ownerLid = (journal.OwnerValues ?? policy.Read()).LidFor(source);
-            var canWrite = CanWrite(now) && !(_armBlockedUntil is { } until && now < until);
-            var inputs = new Inputs(activity.Live, Lid, source, power.BatteryPercent, power.IdleTime, Paused, canWrite, ownerLid);
+            var policyAllows = CanWrite(now);
+            var backingOff = _armBlockedUntil is { } until && now < until;
+            var inputs = new Inputs(activity.Live, Lid, source, battery, power.IdleTime, Paused, policyAllows && !backingOff, ownerLid);
             foreach (var command in controller.Step(inputs, now)) Run(command, now);
             RetryRestore(now);
+
+            var warning = !policyAllows ? EngineWarning.PolicyBlocks
+                : _armBlockedUntil is { } blockedUntil && now < blockedUntil ? EngineWarning.ArmBackoff
+                : controller.Mode != Mode.Armed && journal.HasRecord ? EngineWarning.RestorePending
+                : EngineWarning.None;
+            Snapshot = new EngineSnapshot(controller.Mode, Lid, activity.Live, activity.Holders, source, battery,
+                ownerLid, activity.Hold, Paused, warning);
         }
         catch (Exception ex)
         {
@@ -54,6 +79,15 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
 
     /// <summary>Releases the keep-awake request and restores the owner's settings (quit, session end, startup).</summary>
     public void RestoreNow() => ReleaseAndRestore(clock.Now);
+
+    /// <summary>One log line whenever the set of holders changes, so the log says why the laptop stays awake.</summary>
+    private void LogHoldersWhenTheyChange(IReadOnlyList<Holder> holders)
+    {
+        var labels = string.Join("|", holders.Select(holder => holder.Label));
+        if (labels == _loggedHolders) return;
+        _loggedHolders = labels;
+        log.Info(holders.Count == 0 ? "Quiet" : "Live: " + string.Join(", ", holders.Select(holder => $"{holder.Label} · {holder.Detail}")));
+    }
 
     private void ReleaseAndRestore(TimeSpan now)
     {
