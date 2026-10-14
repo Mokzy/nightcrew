@@ -64,12 +64,12 @@ The app targets `net48` with C# 14.
 |---|---|
 | `Nightcrew.Core` | Pure logic with no P/Invoke, unit-tested with fakes |
 | `Nightcrew.Platform` | Thin Windows wrappers (P/Invoke and WinForms) |
-| `Nightcrew.App` | Tray icon, menu and wiring |
+| `Nightcrew.App` | Tray icon and wiring |
 | `Nightcrew.App.Ui` | The WPF panel, the marks, the theme and the asset renderer |
 
 ## Words and looks
 
-Everything Nightcrew shows, from the panel to the tooltip and the menu, uses
+Everything Nightcrew shows, from the panel and its settings page to the tooltip, uses
 sentence case, short plain sentences and contractions. No exclamation marks,
 no "please", no "successfully". Say what happens, not how. The panel's words
 all come from `PanelModel`, so they're unit-tested.

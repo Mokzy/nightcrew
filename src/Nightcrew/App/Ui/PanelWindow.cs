@@ -21,12 +21,15 @@ public sealed class PanelWindow : Window
     private readonly System.Windows.Controls.Border _frame;
     private readonly TranslateTransform _slide = new();
     private readonly PanelActions _actions;
+    private readonly SettingsActions _settingsActions;
+    private (PanelView View, SettingsPage Settings, MarkKind Mark)? _content;
     private DateTime _hiddenAt = DateTime.MinValue;
     private PanelAnchor? _anchor;
 
-    public PanelWindow(PanelActions actions)
+    public PanelWindow(PanelActions actions, SettingsActions settingsActions)
     {
         _actions = actions;
+        _settingsActions = settingsActions;
         Title = "Nightcrew";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -44,7 +47,9 @@ public sealed class PanelWindow : Window
         };
         KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape) HidePanel();
+            if (e.Key != Key.Escape) return;
+            if (OnSettings) ShowPage(settings: false); // Esc on settings goes back, Esc on the main page closes
+            else HidePanel();
         };
         ElementHost.EnableModelessKeyboardInterop(this);
     }
@@ -55,7 +60,22 @@ public sealed class PanelWindow : Window
     /// </summary>
     public bool JustHid => DateTime.UtcNow - _hiddenAt < TimeSpan.FromMilliseconds(400);
 
-    public void Render(PanelView view, MarkKind mark) => _frame.Child = PanelVisual.Build(view, mark, _actions);
+    /// <summary>True while the settings page is showing instead of the main page.</summary>
+    public bool OnSettings { get; private set; }
+
+    /// <summary>Draws whichever page is showing; the other is kept so <see cref="ShowPage"/> can swap in place.</summary>
+    public void Render(PanelView view, SettingsPage settings, MarkKind mark)
+    {
+        _content = (view, settings, mark);
+        _frame.Child = OnSettings ? PanelVisual.BuildSettings(settings, _settingsActions) : PanelVisual.Build(view, mark, _actions);
+    }
+
+    /// <summary>Switches between the main page and the settings page without closing the panel.</summary>
+    public void ShowPage(bool settings)
+    {
+        OnSettings = settings;
+        if (_content is { } content) Render(content.View, content.Settings, content.Mark);
+    }
 
     /// <summary>Opens beside the taskbar near <paramref name="click"/> (physical pixels), fading and sliding in.</summary>
     public void ShowNear(System.Drawing.Point click)

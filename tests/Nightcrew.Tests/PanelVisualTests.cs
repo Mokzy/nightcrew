@@ -124,11 +124,11 @@ public sealed class PanelVisualTests : IDisposable
     }
 
     [Fact]
-    public void The_readme_renders_write_three_panels_at_twice_the_size()
+    public void The_readme_renders_write_the_three_panels_and_settings_at_twice_the_size()
     {
         var paths = Sta.Run(() => AssetRenderer.WritePanels(_dir));
 
-        Assert.Equal(["panel-quiet.png", "panel-working.png", "panel-paused.png"], paths.Select(Path.GetFileName));
+        Assert.Equal(["panel-quiet.png", "panel-working.png", "panel-paused.png", "panel-settings.png"], paths.Select(Path.GetFileName));
         foreach (var path in paths)
         {
             using var stream = File.OpenRead(path);

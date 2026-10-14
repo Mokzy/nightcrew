@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -10,6 +12,10 @@ namespace Nightcrew.App.Ui;
 
 /// <summary>What the panel's three controls do. Null when the panel is only drawn, as for the README.</summary>
 public sealed record PanelActions(Action Hold, Action Pause, Action Settings);
+
+/// <summary>What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.</summary>
+public sealed record SettingsActions(Action Back, Action<int> BatteryFloor, Action<int> LidClosedLimit,
+    Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit);
 
 /// <summary>Builds the click panel from a <see cref="PanelView"/>. The same tree is shown in the window and rendered for the README.</summary>
 public static class PanelVisual
@@ -32,7 +38,34 @@ public static class PanelVisual
         body.Children.Add(Facts(view.Facts));
         body.Children.Add(Buttons(view, actions));
         if (view.Warning is { } warning) body.Children.Add(WarningRow(warning));
+        return Frame(body);
+    }
 
+    /// <summary>The settings page, in the same frame as the main page so the window can swap one for the other.</summary>
+    public static FrameworkElement BuildSettings(SettingsPage page, SettingsActions? actions)
+    {
+        var body = new StackPanel();
+        body.Children.Add(BackHeader(actions?.Back));
+        body.Children.Add(Text("Battery floor", 12.5, Theme.Moon));
+        body.Children.Add(Segments("Battery floor", page.BatteryFloor, actions?.BatteryFloor));
+        var limit = Text("Lid-closed limit", 12.5, Theme.Moon);
+        limit.Margin = new Thickness(0, 14, 0, 0);
+        body.Children.Add(limit);
+        body.Children.Add(Segments("Lid-closed limit", page.LidClosedLimit, actions?.LidClosedLimit));
+        body.Children.Add(Hairline());
+        body.Children.Add(SwitchRow("Lock when lid closes", page.LockOnLidClose, actions?.LockOnLidClose, bottom: 12));
+        body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 0));
+        body.Children.Add(Hairline());
+        body.Children.Add(Text("Tray mark", 12.5, Theme.Moon));
+        body.Children.Add(Segments("Tray mark", page.Mark, actions?.Mark));
+        body.Children.Add(Hairline());
+        body.Children.Add(Footer(actions));
+        return Frame(body);
+    }
+
+    /// <summary>The Night card with its hairline border and shadow, inside transparent room for the shadow.</summary>
+    private static FrameworkElement Frame(UIElement body)
+    {
         var panel = new Border
         {
             Width = Width,
@@ -66,6 +99,96 @@ public static class PanelVisual
         header.Children.Add(name);
         return header;
     }
+
+    private static Border BackHeader(Action? back)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var arrow = Text("\u2039", 18, Theme.Moon);
+        arrow.Margin = new Thickness(0, 0, 8, 0);
+        arrow.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(arrow);
+        var title = Text("Settings", 13, Theme.Moon, FontWeights.Medium);
+        title.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(title);
+        var header = new Border { Background = Brushes.Transparent, Margin = new Thickness(0, 0, 0, 14), HorizontalAlignment = HorizontalAlignment.Left, Child = row };
+        AutomationProperties.SetName(header, "Back");
+        if (back is not null) OnClick(header, back);
+        return header;
+    }
+
+    /// <summary>A row of choices on a raised track; the chosen one fills lavender.</summary>
+    private static Border Segments<T>(string name, IReadOnlyList<Choice<T>> choices, Action<T>? pick)
+    {
+        var cells = new UniformGrid { Rows = 1, Columns = choices.Count };
+        foreach (var choice in choices)
+        {
+            var label = Text(choice.Label, 12, choice.Selected ? Theme.Ink : Theme.MoonMuted, choice.Selected ? FontWeights.Medium : null);
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.HorizontalAlignment = HorizontalAlignment.Center;
+            var fill = choice.Selected ? Theme.Lavender : Colors.Transparent;
+            var cell = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(0, 6, 0, 6), Background = Theme.Brush(fill), Child = label };
+            AutomationProperties.SetName(cell, $"{name} {choice.Label}");
+            if (pick is not null && !choice.Selected) Clickable(cell, () => pick(choice.Value), fill, Theme.NightHover);
+            cells.Children.Add(cell);
+        }
+        return new Border
+        {
+            Background = Theme.Brush(Theme.NightRaised),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(3),
+            Margin = new Thickness(0, 8, 0, 0),
+            Child = cells,
+        };
+    }
+
+    /// <summary>A label with an on/off switch; clicking anywhere on the row flips it.</summary>
+    private static Border SwitchRow(string label, bool on, Action<bool>? set, double bottom)
+    {
+        var knob = new System.Windows.Shapes.Ellipse
+        {
+            Width = 12,
+            Height = 12,
+            Fill = Theme.Brush(on ? Theme.Ink : Theme.MoonFaint),
+            Margin = new Thickness(3),
+            HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var track = new Border { Width = 30, Height = 18, CornerRadius = new CornerRadius(9), Background = Theme.Brush(on ? Theme.Lavender : Theme.NightRaised), Child = knob };
+        var dock = new DockPanel();
+        DockPanel.SetDock(track, Dock.Right);
+        dock.Children.Add(track);
+        var text = Text(label, 12.5, Theme.Moon);
+        text.VerticalAlignment = VerticalAlignment.Center;
+        dock.Children.Add(text);
+        var row = new Border { Background = Brushes.Transparent, Margin = new Thickness(0, 0, 0, bottom), Child = dock };
+        AutomationProperties.SetName(row, label);
+        if (set is not null) OnClick(row, () => set(!on));
+        return row;
+    }
+
+    /// <summary>Open log on the left, Quit on the right, in reading order.</summary>
+    private static Grid Footer(SettingsActions? actions)
+    {
+        var footer = new Grid();
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var log = Text("Open log", 12, Theme.MoonFaint);
+        log.HorizontalAlignment = HorizontalAlignment.Left;
+        AutomationProperties.SetName(log, "Open log");
+        var quit = Text("Quit Nightcrew", 12, Theme.MoonMuted);
+        AutomationProperties.SetName(quit, "Quit Nightcrew");
+        Grid.SetColumn(quit, 1);
+        if (actions is not null)
+        {
+            Clickable(log, actions.OpenLog, Theme.MoonFaint, Theme.MoonMuted);
+            Clickable(quit, actions.Quit, Theme.MoonMuted, Theme.Moon);
+        }
+        footer.Children.Add(log);
+        footer.Children.Add(quit);
+        return footer;
+    }
+
+    private static Border Hairline() => new() { Height = 1, Background = Theme.Brush(Theme.Hairline), Margin = new Thickness(0, 14, 0, 14) };
 
     private static TextBlock Headline(PanelView view)
     {
@@ -137,7 +260,7 @@ public static class PanelVisual
         text.HorizontalAlignment = HorizontalAlignment.Center;
         text.VerticalAlignment = VerticalAlignment.Center;
         var button = new Border { Height = 34, CornerRadius = new CornerRadius(8), Background = Theme.Brush(fill), Child = text };
-        System.Windows.Automation.AutomationProperties.SetName(button, label);
+        AutomationProperties.SetName(button, label);
         if (click is not null) Clickable(button, click, fill, on ? Theme.Lavender : Theme.NightHover);
         return button;
     }
@@ -192,6 +315,12 @@ public static class PanelVisual
         }
         element.MouseEnter += (_, _) => Paint(hover);
         element.MouseLeave += (_, _) => Paint(normal);
+        OnClick(element, click);
+    }
+
+    private static void OnClick(FrameworkElement element, Action click)
+    {
+        element.Cursor = Cursors.Hand;
         element.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;
