@@ -35,3 +35,20 @@ public static class PanelPlacement
     /// <summary>Prefers the low bound when the panel is larger than the room, so its top-left stays on screen.</summary>
     private static double Clamp(double value, double low, double high) => Math.Max(low, Math.Min(high, value));
 }
+
+/// <summary>
+/// Where the panel was opened: the screen, the work area and the click in physical pixels, and the DPI scale.
+/// Kept so the panel can be placed again whenever its size changes.
+/// </summary>
+public sealed record PanelAnchor(Rect Screen, Rect WorkArea, Point Click, double Scale)
+{
+    /// <summary>
+    /// The window's top-left in DIPs for a window <paramref name="size"/> DIPs big, whose visible panel sits
+    /// <paramref name="room"/> DIPs inside it and <paramref name="gap"/> DIPs from the taskbar.
+    /// </summary>
+    public Placement For(Size size, double gap, double room)
+    {
+        var pixels = PanelPlacement.Place(Screen, WorkArea, Click, new Size(size.Width * Scale, size.Height * Scale), (gap - room) * Scale);
+        return pixels with { TopLeft = new Point(pixels.TopLeft.X / Scale, pixels.TopLeft.Y / Scale) };
+    }
+}

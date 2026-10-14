@@ -77,4 +77,27 @@ public sealed class PanelPlacementTests
         Assert.Equal(TaskbarEdge.Bottom, placement.Edge);
         Assert.Equal(new Point(1920 + 2560 - 12 - 352, -200 + 1392 - 12 - 500), placement.TopLeft);
     }
+
+    [Fact]
+    public void An_anchor_keeps_a_growing_panel_against_a_bottom_taskbar()
+    {
+        // 150% scaling: the anchor is in physical pixels, sizes and results in DIPs.
+        var anchor = new PanelAnchor(Screen, new Rect(0, 0, 1920, 1008), new Point(1700, 1040), 1.5);
+
+        var quiet = anchor.For(new Size(352, 334), gap: 12, room: 16);
+        var working = anchor.For(new Size(352, 423), gap: 12, room: 16);
+
+        Assert.Equal(TaskbarEdge.Bottom, working.Edge);
+        Assert.Equal(quiet.TopLeft.Y + 334, working.TopLeft.Y + 423, 6);
+        Assert.Equal(1008 / 1.5 - 12 + 16, working.TopLeft.Y + 423, 6); // the visible panel ends 12 DIPs above the work area
+        Assert.Equal(quiet.TopLeft.X, working.TopLeft.X, 6);
+    }
+
+    [Fact]
+    public void An_anchor_keeps_a_growing_panel_against_a_top_taskbar()
+    {
+        var anchor = new PanelAnchor(Screen, new Rect(0, 48, 1920, 1032), new Point(1000, 20), 1);
+
+        Assert.Equal(anchor.For(new Size(352, 334), 12, 16).TopLeft, anchor.For(new Size(352, 423), 12, 16).TopLeft);
+    }
 }

@@ -22,6 +22,7 @@ public sealed class PanelWindow : Window
     private readonly TranslateTransform _slide = new();
     private readonly PanelActions _actions;
     private DateTime _hiddenAt = DateTime.MinValue;
+    private PanelAnchor? _anchor;
 
     public PanelWindow(PanelActions actions)
     {
@@ -37,6 +38,10 @@ public sealed class PanelWindow : Window
         _frame = new System.Windows.Controls.Border { RenderTransform = _slide };
         Content = _frame;
         Deactivated += (_, _) => HidePanel();
+        SizeChanged += (_, e) =>
+        {
+            if (IsVisible && _anchor is not null) MoveTo(e.NewSize); // rows come and go while it's open
+        };
         KeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) HidePanel();
@@ -58,16 +63,11 @@ public sealed class PanelWindow : Window
         new WindowInteropHelper(this).EnsureHandle();
         var dpi = VisualTreeHelper.GetDpi(this);
         _frame.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var size = _frame.DesiredSize;
-
         var screen = System.Windows.Forms.Screen.FromPoint(click);
-        var room = PanelVisual.ShadowRoom * dpi.DpiScaleX;
-        var placement = PanelPlacement.Place(ToRect(screen.Bounds), ToRect(screen.WorkingArea), new Point(click.X, click.Y),
-            new Size(size.Width * dpi.DpiScaleX, size.Height * dpi.DpiScaleY), Gap * dpi.DpiScaleX - room);
-        Left = placement.TopLeft.X / dpi.DpiScaleX;
-        Top = placement.TopLeft.Y / dpi.DpiScaleY;
+        _anchor = new PanelAnchor(ToRect(screen.Bounds), ToRect(screen.WorkingArea), new Point(click.X, click.Y), dpi.DpiScaleX);
+        var edge = MoveTo(_frame.DesiredSize);
 
-        var (property, from) = placement.Edge switch
+        var (property, from) = edge switch
         {
             TaskbarEdge.Top => (TranslateTransform.YProperty, -Slide),
             TaskbarEdge.Left => (TranslateTransform.XProperty, -Slide),
@@ -81,6 +81,15 @@ public sealed class PanelWindow : Window
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, FadeIn) { EasingFunction = ease });
         _slide.BeginAnimation(property, new DoubleAnimation(from, 0, FadeIn) { EasingFunction = ease });
+    }
+
+    /// <summary>Puts the window against the taskbar for its current size.</summary>
+    private TaskbarEdge MoveTo(Size size)
+    {
+        var placement = _anchor!.For(size, Gap, PanelVisual.ShadowRoom);
+        Left = placement.TopLeft.X;
+        Top = placement.TopLeft.Y;
+        return placement.Edge;
     }
 
     public void HidePanel()
