@@ -51,6 +51,7 @@ public sealed class TrayApp : ApplicationContext
             Hold: () => SetHold(!_snapshot.Hold),
             Pause: () => SetPaused(!_snapshot.Paused),
             Settings: ShowMenuFromPanel));
+        UiSafety.Install(_panel.Dispatcher, log);
 
         _holdItem = Toggle("Hold awake", false, SetHold);
         _pauseItem = Toggle("Pause", false, SetPaused);
