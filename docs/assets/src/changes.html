@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What Nightcrew changes</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { padding: 64px 80px; }
+  h2 { margin: 0 0 36px; font-size: 40px; line-height: 1.1; }
+  table { width: 100%; border-collapse: collapse; font-size: 19px; }
+  th { text-align: left; font-weight: 500; font-size: 14px; letter-spacing: 0.06em; color: var(--faint); padding: 0 0 14px; }
+  td { padding: 17px 0; border-top: 1px solid var(--hairline); }
+  td:first-child { color: var(--muted); width: 38%; }
+  td:nth-child(2) { width: 34%; }
+  .on { display: inline-block; background: var(--lavender); color: var(--ink); font-weight: 500; font-size: 16px; padding: 5px 14px; border-radius: 8px; }
+  .back { color: var(--moon); }
+  .none { color: var(--faint); }
+  .note { margin: 26px 0 0; font-size: 17px; line-height: 1.5; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h2 class="serif">What changes, <em>and what goes back.</em></h2>
+  <table>
+    <tr><th>SETTING</th><th>WHILE AN AGENT WORKS</th><th>WHEN IT'S DONE</th></tr>
+    <tr><td>When I close the lid</td><td><span class="on">Do nothing</span></td><td class="back">Your setting again</td></tr>
+    <tr><td>Sleep after</td><td><span class="on">Never</span></td><td class="back">Your setting again</td></tr>
+    <tr><td>Keep the system running</td><td><span class="on">Requested</span></td><td class="back">Released</td></tr>
+    <tr><td>Closing the lid</td><td><span class="on">Locks the PC</span></td><td class="none">Nothing extra</td></tr>
+  </table>
+  <p class="note">Your values are saved before anything changes. If Nightcrew crashes, a watchdog puts them back within 5 minutes.</p>
+</body>
+</html>

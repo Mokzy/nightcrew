@@ -6,6 +6,8 @@
     <AssemblyName>nightcrew</AssemblyName>
     <RootNamespace>Nightcrew</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Made by build/render-assets.ps1 from MarkGeometry; rerun it after changing the marks. -->
+    <ApplicationIcon>nightcrew.ico</ApplicationIcon>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
   </PropertyGroup>

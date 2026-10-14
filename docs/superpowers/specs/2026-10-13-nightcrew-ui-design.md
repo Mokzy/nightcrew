@@ -1,6 +1,7 @@
 # Nightcrew UI design
 
-Date: 13 October 2026. Status: draft for owner review. This builds on
+Date: 13 October 2026. Status: approved by the owner on 14 October 2026;
+section 10 records what changed while building it. This builds on
 [the v1 design](2026-10-13-nightcrew-design.md) and the code on `feat/v1`. It
 changes how Nightcrew looks and reads, not what it does.
 
@@ -49,6 +50,7 @@ Three surfaces change:
 | `Lavender` | `#F0D7FF` | the lit flame or star, Hold awake when on, badges |
 | `Ink` | `#1A1A1A` | text on lavender |
 | `Warn` | `#F5C27A` | warning row text |
+| `LavenderDeep` | `#8E5CC4` | the flame or star on a light taskbar |
 
 **Type:**
 - **Headline:** EB Garamond, regular and italic, 26 px. It is used for the
@@ -254,3 +256,23 @@ state, then switch `Mark` between `lantern` and `moon`.
 - animations beyond the panel fade
 - a finishing panel state
 - a settings window (settings stay in the right-click menu and `settings.json`)
+
+## 10. Changes while building (14 October 2026)
+
+- **Code-only WPF.** The panel is built in C# (`App/Ui/PanelVisual.cs`) and
+  hosted by `App/Ui/PanelWindow.cs`, with no XAML. The same tree is shown in
+  the window and rendered for the README.
+- **No hidden exe verb.** `build/render-assets.ps1` loads the built exe as a
+  library and calls `AssetRenderer`, so rendering never starts the tray app.
+  It writes `panel-quiet.png`, `panel-working.png` and `panel-paused.png`;
+  the README shows `panel-working.png`. The same script writes the app icon
+  and screenshots the README pages with headless Chrome.
+- **App icon.** `src/Nightcrew/nightcrew.ico` is committed and set as
+  `ApplicationIcon`. A test checks its sizes against `MarkGeometry`.
+- **Light taskbars.** The tray mark uses `Night` ink and `LavenderDeep` when
+  Windows' taskbar is light, read from the registry on each update.
+- **Menu.** The `Mark` setting also has a **Tray mark** submenu.
+- **Exe size.** About 1.5 MB, because EB Garamond's two files are about
+  0.6 MB each.
+- **Header mark.** 20 px with the 1.5-unit stroke, because the panel is never
+  shown smaller than that.
