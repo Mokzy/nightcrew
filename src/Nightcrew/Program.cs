@@ -96,9 +96,14 @@ internal static class Program
             return;
         }
 
+        // The panel is small and rarely open; GPU rendering would keep about 75 MB allocated for the rest of the session.
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+
+        var clock = new SystemClock();
         using var events = new PowerEventsWindow();
         using var realKeepAwake = new KeepAwake();
         using var gpu = new PdhGpuUsage();
+        using var transcripts = new WatchingJsonlScanner(new JsonlFileScanner(), clock);
         var realPower = new SystemPower(() => events.Handle);
         IPowerPolicy policy = dryRun ? new DryRunPolicy(realPolicy, log) : realPolicy;
         ISystemPower power = dryRun ? new DryRunSystemPower(realPower, log) : realPower;
@@ -108,13 +113,13 @@ internal static class Program
         var grace = TimeSpan.FromMinutes(settings.GraceMinutes);
         IBusySignal[] signals =
         [
-            new TranscriptSignal(new JsonlFileScanner(), settings.TranscriptRoots, settings.IgnorePathContains, grace),
+            new TranscriptSignal(transcripts, settings.TranscriptRoots, settings.IgnorePathContains, grace),
             new AgentTreeSignal(new ToolhelpProcessTable(), settings),
             new GpuSignal(gpu, settings.GpuPercent, ProcessName),
         ];
         var activity = new ActivityMonitor(signals, grace);
         var controller = new Controller(settings);
-        var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, new SystemClock());
+        var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, clock);
 
         using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log);
         Application.Run(tray);
