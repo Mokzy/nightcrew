@@ -8,190 +8,99 @@
   <img src="https://img.shields.io/badge/status-experimental-F5C27A?style=flat-square&labelColor=26282B" alt="Status: experimental">
 </p>
 
-Close your laptop and walk away while Claude Code or Codex keeps working.
+Close a Windows laptop and it goes to sleep, and whatever Claude Code or Codex
+was doing stops with it. Nightcrew keeps the laptop working with the lid shut
+for exactly as long as an agent is busy, then lets it sleep the way it
+normally would.
 
-- While an agent is working, Nightcrew keeps a Windows laptop awake with the
-  lid closed.
-- When the work ends, it puts your power settings back and does what your lid
-  action says: sleep, hibernate or nothing.
-- It lives in the tray. There's nothing to set up.
-
-> [!WARNING]
-> **Heat.** A closed laptop in a bag has almost no airflow. Don't run hard
-> jobs, such as long builds or GPU work, in a closed bag. Nightcrew doesn't
-> watch temperatures.
+- **Automatic.** It notices when an agent is working. No hooks, no plugin,
+  nothing to configure.
+- **Only when needed.** With no agent working, closing the lid does what it
+  always did.
+- **Leaves your settings alone.** It changes power settings only while an
+  agent works and puts them back afterwards, even after a crash.
+- **Light.** One 1.6 MB exe in the tray, using well under 1% of a CPU core.
 
 ## Install
 
 1. Download `nightcrew.exe` from [Releases](../../releases/latest).
-2. Move it to a folder where it can stay, for example
-   `%LOCALAPPDATA%\Programs\Nightcrew`. Start at login and the watchdog task
-   remember this path.
-3. Run it. The lantern appears in the tray.
+2. Put it somewhere it can stay, such as `%LOCALAPPDATA%\Programs\Nightcrew`,
+   and run it. A lantern appears in the tray, and Nightcrew starts with
+   Windows from then on.
 
-Nightcrew needs Windows 10 (1903 or later) or Windows 11. It uses
-.NET Framework 4.8, which is already part of Windows.
+The exe isn't code-signed, so the first run shows "Windows protected your PC".
+Click **More info**, then **Run anyway**. With Smart App Control on, Windows
+may block it outright. Each release comes with a SHA-256 file and a GitHub
+build attestation for checking the download.
 
-Nightcrew isn't code-signed. The first time you run it, SmartScreen shows
-"Windows protected your PC". Click **More info**, then **Run anyway**. If
-Smart App Control is on, it blocks unsigned apps it doesn't already trust and
-offers no Run anyway, so Nightcrew may not start.
-
-Each release includes `nightcrew.exe.sha256` and a GitHub build attestation.
-To check your download, run `Get-FileHash .\nightcrew.exe` and compare the
-hash with the one in that file.
-
-## Using it
-
-<img src="docs/assets/panel-working.png" alt="The Nightcrew panel while Claude Code and Codex are working" width="352" align="right">
-
-The lantern in the tray shows what Nightcrew is doing:
-
-- **Unlit.** Nightcrew isn't keeping the laptop awake. Close the lid and
-  Windows does what it normally does.
-- **Flame.** An agent is working and Nightcrew is keeping the laptop awake.
-  Close the lid and it keeps going.
-- **Filled.** The same, with the lid closed.
-
-If an agent is working but Nightcrew can't keep the laptop awake, for example
-because a policy blocks it, the lantern stays unlit and the panel tells you to
-keep the lid open.
-
-Click the lantern to open the panel. It says who is keeping the laptop awake,
-your battery, and what happens when the work is done. **Hold awake** keeps the
-laptop awake until you turn it off. **Pause** hands the lid back to Windows
-until you resume.
-
-<br clear="right">
-
-<img src="docs/assets/panel-settings.png" alt="The Nightcrew settings page" width="352" align="right">
-
-Click **Settings** in the panel, or right-click the lantern, for the settings
-page. Changes save as soon as you make them. **‹** or Esc goes back.
-
-- **Battery floor.** 10, 15, 20 or 30%, or Off.
-- **Lid-closed limit.** 2, 4, 8 or 12 hours, or Off.
-- **Lock when lid closes.**
-- **Start at login.**
-- **Tray mark.** The lantern, or a moon and star.
-- **Open log.**
-- **Quit Nightcrew.** Puts your power settings back, then exits.
-
-<br clear="right">
-
-### How it decides an agent is busy
-
-Every 10 seconds Nightcrew looks for any of these:
-
-- **Transcripts.** A Claude Code or Codex session file (`*.jsonl` under
-  `%USERPROFILE%\.claude\projects` or `%USERPROFILE%\.codex\sessions`) grew,
-  or a new one appeared.
-- **Agent tool processes.** A program started by `claude` or `codex`, such as
-  a build, a test run or a script, used at least 10% of one CPU core. Codex
-  itself counts at 2%.
-- **GPU.** Any process kept a GPU engine at least 30% busy. A game or a video
-  counts too.
-- **Hold awake.** You turned it on. It counts as busy until you turn it off.
-
-Work counts as live until 5 minutes after the last busy check. The panel lists
-each of these under "Keeping it awake".
-
-## What happens when the lid closes
+## How it works
 
 <img src="docs/assets/night.png" alt="One night in four steps: an agent starts, you close the lid, the work ends, it sleeps" width="100%">
 
-While work is live, Nightcrew:
+1. **An agent starts working.** Every 10 seconds Nightcrew looks for a Claude
+   Code or Codex session that's growing, a build or script one of them
+   started, or heavy GPU use. The lantern lights up.
+2. **You close the lid.** The laptop keeps running and locks itself. Nightcrew
+   has saved your power settings, then set the lid to Do nothing and the sleep
+   timer to Never.
+3. **The work ends.** Five minutes after the last sign of work, your settings
+   go back.
+4. **It sleeps.** Once nobody has touched the laptop for 5 minutes, it follows
+   your lid action: sleep, hibernate or nothing. If Windows hasn't gone to
+   sleep 5 minutes later, Nightcrew hibernates it.
 
-- sets the lid-close action to Do nothing and "Sleep after" to Never, on mains
-  power and on battery
-- asks Windows to keep the system running
-- locks the PC when you close the lid during work, or when work starts while
-  the lid is already closed and there has been no keyboard or mouse input for
-  5 minutes (turn off **Lock when lid closes** if you don't want that)
+**Safety limits.** With the lid closed, Nightcrew stops early and hibernates at
+20% battery or after 8 untouched hours, even mid-task. You can change both.
 
-When the work ends, Nightcrew puts your settings back. If the lid is open,
-that's all. If the lid is closed, it waits until there has been no keyboard or
-mouse input for 5 minutes, then follows your Windows lid action for the
-current power source:
+**Your settings always come back:** when the work ends, when you pause or quit,
+when you sign out, and on the next start after a crash. If Nightcrew is killed,
+a watchdog task restores them within 5 minutes. If your organization locks the
+power settings, Nightcrew stays idle and tells you so.
 
-- **Sleep.** It turns the screen off and lets Windows sleep. If the laptop is
-  still awake 5 minutes later, it hibernates.
-- **Hibernate** or **Shut down.** It hibernates.
-- **Do nothing.** The laptop stays on, as your setting says.
+## The panel
 
-If work starts again first, Nightcrew keeps the laptop awake again. If you open
-the lid first, it does nothing.
+<img src="docs/assets/panel-working.png" alt="The Nightcrew panel while Claude Code and Codex are working" width="352" align="right">
 
-Your lid action is in Settings > System > Power & battery > Lid & power button
-controls, or in Control Panel > Power Options > Choose what closing the lid
-does.
+Click the lantern to see what's keeping the laptop awake, your battery, and
+what happens when the work is done.
 
-### Battery floor and lid-closed limit
+- **Hold awake** keeps the laptop awake until you turn it off, for anything
+  Nightcrew can't detect on its own.
+- **Pause** hands the lid back to Windows until you resume.
+- **Settings**, or right-click the lantern: battery floor, lid-closed limit,
+  lock on lid close, start at login and the tray mark.
 
-With the lid closed, Nightcrew stops early and hibernates, even if an agent is
-still working, when:
+<br clear="right">
 
-- it's on battery and the charge falls to the battery floor (default 20%), or
-- the lid has been closed for the lid-closed limit (default 8 hours).
+## Good to know
 
-It puts your settings back first. After that it won't keep the laptop awake
-again until you open the lid. If hibernation is turned off on your PC
-(`powercfg /a` lists what's available), Windows' own sleep timer takes over
-instead.
+- Switching power plans while an agent works leaves the old plan on Do nothing.
+  Switch before or after.
+- A game or video that keeps the GPU busy counts as work.
+- In a bag, the laptop loses your Wi-Fi. Set your phone's hotspot to
+  **Connect automatically** (Settings > Network & internet > Wi-Fi > Manage
+  known networks) and Windows switches to it by itself.
 
-The battery floor applies whenever the lid is closed on battery, even while
-you work on a docked laptop. The lid-closed limit counts only time without
-keyboard or mouse input, which starts 5 minutes after your last input, so
-time spent working on a docked laptop with its lid closed doesn't count
-toward it.
+<details>
+<summary><b>Other agents and advanced settings</b></summary>
 
-## How it puts things back
+Nightcrew knows Claude Code and Codex. Any other agent is covered when it uses
+the GPU, or with **Hold awake**. To teach Nightcrew about another agent, quit
+Nightcrew, edit `%LOCALAPPDATA%\Nightcrew\settings.json`, and start it again:
 
-<img src="docs/assets/changes.png" alt="What changes while an agent works, and what goes back when it's done" width="100%">
+- add its process name to `AgentProcessNames`, so programs it starts count as
+  agent tools
+- add it to `SelfCpuAgentNames` too if the agent works in its own process
+- add the folder where it writes `*.jsonl` session files to `TranscriptRoots`
 
-Nightcrew saves your original values in `%LOCALAPPDATA%\Nightcrew\restore.json`
-before changing anything. If you change one of these settings yourself while
-Nightcrew is working, your change is kept.
-
-It puts your settings back when the work ends, when you pause or quit it, when
-you sign out or shut down, and the next time it starts after a crash or a
-power cut. If Nightcrew crashes or is killed, a scheduled task called
-Nightcrew Watchdog puts your settings back within 5 minutes.
-
-If your organization's policy locks the power settings, Nightcrew can't change
-them. It stays idle and the panel says so.
-
-## Limits
-
-- Don't switch Windows power plans while an agent is working. Nightcrew puts
-  your settings back into the plan that is active at that moment, so the plan
-  you switched away from keeps Do nothing and Never.
-- A game or video that keeps a GPU engine at least 30% busy counts as busy,
-  so the laptop stays awake while it runs.
-- If the laptop leaves your Wi-Fi, for example in a bag, the agent loses its
-  connection. To have Windows switch to your phone's hotspot by itself, open
-  Settings > Network & internet > Wi-Fi > Manage known networks, select the
-  hotspot and turn on **Connect automatically when in range**.
-
-## Other agents
-
-Nightcrew knows Claude Code and Codex. Any other agent is covered when it
-uses the GPU, or when you turn on **Hold awake**. To teach Nightcrew about
-another agent, edit `%LOCALAPPDATA%\Nightcrew\settings.json`:
-
-- Add its process name to `AgentProcessNames`, so programs it starts count
-  as agent tools.
-- Add it to `SelfCpuAgentNames` too if the agent does its work in its own
-  process.
-- Add the folder where it writes `*.jsonl` session files to `TranscriptRoots`.
-
-Quit Nightcrew before editing the file, then start it again. A key you leave
-out keeps its default. The log is `nightcrew.log` in the same folder.
+A key you leave out keeps its default. The log, `nightcrew.log`, is in the
+same folder. To see what Nightcrew would do without letting it change
+anything, run `nightcrew --dry-run` and read the log.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GraceMinutes` | 5 | How long work stays live after the last busy check |
-| `BatteryFloorPercent` | 20 | Hibernate at this charge with the lid closed and on battery; 0 = off |
+| `GraceMinutes` | 5 | How long work stays live after the last sign of work |
+| `BatteryFloorPercent` | 20 | Hibernate at this charge with the lid closed on battery; 0 = off |
 | `LidClosedCapHours` | 8 | Hibernate after this long with the lid closed and no input; 0 = off |
 | `AwayMinutes` | 5 | Minutes without input before the lid action runs, before lid-closed time counts toward the limit, and before the lock when work starts with the lid closed |
 | `LockOnLidClose` | true | Lock the PC when the lid closes |
@@ -207,17 +116,14 @@ out keeps its default. The log is `nightcrew.log` in the same folder.
 | `SampleSeconds` | 10 | Seconds between checks |
 | `Mark` | `lantern` | The tray mark: `lantern` or `moon` |
 
-To watch what Nightcrew would do without letting it change anything, run
-`nightcrew --dry-run` and read the log.
+</details>
 
 ## Uninstall
 
-1. Quit Nightcrew from the tray.
-2. Open a terminal in the folder that holds the exe and run
-   `.\nightcrew.exe --uninstall`. It puts your power settings back, removes
-   Start at login and deletes the Nightcrew Watchdog task.
-3. Delete `nightcrew.exe`. To remove settings and logs too, delete
-   `%LOCALAPPDATA%\Nightcrew`.
+Quit Nightcrew from the tray, then run `.\nightcrew.exe --uninstall` in its
+folder. That puts your settings back and removes the startup entry and the
+watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
+the settings and log gone too.
 
 ## Credits
 
