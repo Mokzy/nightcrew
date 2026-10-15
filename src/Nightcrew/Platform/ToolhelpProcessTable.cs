@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nightcrew.Core;
 
@@ -8,6 +6,7 @@ namespace Nightcrew.Platform;
 public sealed class ToolhelpProcessTable : IProcessTable
 {
     private const uint TH32CS_SNAPPROCESS = 0x2;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     private static readonly IntPtr InvalidHandleValue = new(-1);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -37,6 +36,12 @@ public sealed class ToolhelpProcessTable : IProcessTable
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
 
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetProcessTimes(IntPtr process, out long creationTime, out long exitTime, out long kernelTime, out long userTime);
+
     public IReadOnlyList<ProcessEntry> List()
     {
         var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -55,20 +60,24 @@ public sealed class ToolhelpProcessTable : IProcessTable
         }
     }
 
+    /// <summary>Reads the times straight from the process; the Process class would walk the whole process list first.</summary>
     public bool TryGetTimes(int pid, out DateTime startUtc, out TimeSpan cpu)
     {
+        startUtc = default;
+        cpu = default;
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) return false;
         try
         {
-            using var process = Process.GetProcessById(pid);
-            startUtc = process.StartTime.ToUniversalTime();
-            cpu = process.TotalProcessorTime;
+            // A process that has exited but is still held open by someone has an exit time.
+            if (!GetProcessTimes(handle, out var created, out var exited, out var kernel, out var user) || exited != 0) return false;
+            startUtc = DateTime.FromFileTimeUtc(created);
+            cpu = TimeSpan.FromTicks(kernel + user);
             return true;
         }
-        catch (Exception e) when (e is ArgumentException or InvalidOperationException or Win32Exception)
+        finally
         {
-            startUtc = default;
-            cpu = default;
-            return false;
+            CloseHandle(handle);
         }
     }
 
