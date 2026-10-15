@@ -36,10 +36,13 @@ public static class MarkGeometry
     /// </summary>
     internal const double TrayLanternScale = 1.18;
 
+    // The working flame: the lantern's flame 1.2 times as big, filling most of the glass, with a pale core near its base.
+    private const double WorkingFlameScale = 1.2, WorkingFlameTip = 9.4, CoreScale = 0.62, CoreTip = 12.93;
+
     /// <summary>
-    /// The mark for one state, in grid units, frozen. Working fills the lantern's glass, or the moon, with lavender,
-    /// which reads at a glance in the tray. <paramref name="ink"/> is the stroke colour; on a light taskbar it is
-    /// Night, and the lavender deepens so the fill still shows.
+    /// The mark for one state, in grid units, frozen. Working lights an amber flame in the lantern's empty glass, or
+    /// fills the moon with amber, which stands out from the white icons beside it in the tray. <paramref name="ink"/>
+    /// is the stroke colour; on a light taskbar it is Night, and the amber deepens so it still shows.
     /// </summary>
     public static Drawing Build(MarkKind kind, MarkState state, double strokeWidth, Color ink)
     {
@@ -47,7 +50,9 @@ public static class MarkGeometry
         var pen = new Pen(Theme.Brush(ink), strokeWidth) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         pen.Freeze();
         var inkFill = Theme.Brush(ink);
-        var lavender = Theme.Brush(ink == Theme.Night ? Theme.LavenderDeep : Theme.Lavender);
+        var light = ink == Theme.Night;
+        var amber = Theme.Brush(light ? Theme.AmberDeep : Theme.Amber);
+        var core = Theme.Brush(light ? Theme.AmberDeepCore : Theme.AmberCore);
         var working = state == MarkState.Live;
 
         void Add(string path, Brush? fill, Pen? stroke) => group.Children.Add(new GeometryDrawing(fill, stroke, Parse(path)));
@@ -56,12 +61,17 @@ public static class MarkGeometry
         {
             Add(LanternHandle, null, pen);
             Add(LanternRoof, inkFill, pen);
-            Add(LanternGlass, working ? lavender : null, pen);
+            Add(LanternGlass, null, pen);
+            if (working)
+            {
+                group.Children.Add(new GeometryDrawing(amber, null, FlameAt(WorkingFlameScale, WorkingFlameTip)));
+                group.Children.Add(new GeometryDrawing(core, null, FlameAt(CoreScale, CoreTip)));
+            }
             Add(LanternBase, inkFill, pen);
         }
         else
         {
-            Add(Moon, working ? lavender : null, pen);
+            Add(Moon, working ? amber : null, pen);
             if (working)
             {
                 var starPen = new Pen(inkFill, 1) { LineJoin = PenLineJoin.Round };
@@ -139,6 +149,18 @@ public static class MarkGeometry
     private static Geometry Parse(string path)
     {
         var geometry = Geometry.Parse(path);
+        geometry.Freeze();
+        return geometry;
+    }
+
+    /// <summary>The lantern's flame scaled about its tip, with the tip moved to <paramref name="tipY"/>.</summary>
+    private static Geometry FlameAt(double scale, double tipY)
+    {
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(scale, scale, 12, 10));
+        transform.Children.Add(new TranslateTransform(0, tipY - 10));
+        var geometry = Geometry.Parse(LanternFlame).Clone(); // Parse returns it frozen
+        geometry.Transform = transform;
         geometry.Freeze();
         return geometry;
     }

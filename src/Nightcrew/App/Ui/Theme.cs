@@ -14,7 +14,12 @@ public static class Theme
     public static Color MoonFaint { get; } = Rgb(0x8C, 0x8A, 0x7C);
     public static Color Hairline { get; } = Color.FromArgb(0x1A, 0xFF, 0xFF, 0xEB); // Moon at 10%
     public static Color Lavender { get; } = Rgb(0xF0, 0xD7, 0xFF);
-    public static Color LavenderDeep { get; } = Rgb(0x8E, 0x5C, 0xC4); // lavender for tray marks on a light taskbar
+
+    // The working tray mark's flame: amber with a pale core, deeper on a light taskbar so it still stands out.
+    public static Color Amber { get; } = Rgb(0xFF, 0xB1, 0x3B);
+    public static Color AmberCore { get; } = Rgb(0xFF, 0xE9, 0xB8);
+    public static Color AmberDeep { get; } = Rgb(0xE0, 0x86, 0x00);
+    public static Color AmberDeepCore { get; } = Rgb(0xFF, 0xCB, 0x6B);
     public static Color Ink { get; } = Rgb(0x1A, 0x1A, 0x1A);
     public static Color Warn { get; } = Rgb(0xF5, 0xC2, 0x7A);
 
