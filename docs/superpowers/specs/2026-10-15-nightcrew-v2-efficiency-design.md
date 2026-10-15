@@ -335,7 +335,7 @@ The built-in lists are constants in code, not settings.
 | `Core/EfficiencyPlanner` | pure | Snapshot in, plan out (sections 3–4) |
 | `Core/EfficiencyRecord` | data | The record from 5.3 and its JSON |
 | `Core/EfficiencyCoordinator` | logic | Each tick, builds the snapshot, asks the gate and planner, and drives Efficiency mode. It also keeps the "while you were away" list. |
-| `Platform/EfficiencyMode` | Windows | Section 5: `Apply`, `Restore`, `RestoreAll`, `RestoreLeftovers` |
+| `Platform/EfficiencyMode` | Windows | Section 5: `Apply`, `Restore`, `RestoreAll`; its constructor loads what a crashed run left in the record, so `RestoreAll` puts that back too |
 | `Platform/DryRunEfficiency` | Windows | Section 5.5 |
 | `Platform/WindowOwners` | Windows | The candidate pids from 3.1 |
 | `Platform/LoopbackConnections` | Windows | The TCP rows from 3.3 rule 4 |
