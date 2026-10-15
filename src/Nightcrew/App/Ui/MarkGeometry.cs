@@ -31,8 +31,15 @@ public static class MarkGeometry
     public static double StrokeFor(double pixels) => pixels < 24 ? 2.0 : 1.5;
 
     /// <summary>
-    /// The mark for one state, in grid units, frozen. <paramref name="ink"/> is the stroke colour; on a light
-    /// taskbar it is Night, and the lavender deepens so the flame and the star still show.
+    /// The lantern spans about 20 of the 24 units, the moon and star nearly all of them. Windows fixes the tray
+    /// slot's size, so tray bitmaps scale the lantern up about the centre until it fills the slot's height.
+    /// </summary>
+    internal const double TrayLanternScale = 1.18;
+
+    /// <summary>
+    /// The mark for one state, in grid units, frozen. Working fills the lantern's glass, or the moon, with lavender,
+    /// which reads at a glance in the tray. <paramref name="ink"/> is the stroke colour; on a light taskbar it is
+    /// Night, and the lavender deepens so the fill still shows.
     /// </summary>
     public static Drawing Build(MarkKind kind, MarkState state, double strokeWidth, Color ink)
     {
@@ -41,6 +48,7 @@ public static class MarkGeometry
         pen.Freeze();
         var inkFill = Theme.Brush(ink);
         var lavender = Theme.Brush(ink == Theme.Night ? Theme.LavenderDeep : Theme.Lavender);
+        var working = state == MarkState.Live;
 
         void Add(string path, Brush? fill, Pen? stroke) => group.Children.Add(new GeometryDrawing(fill, stroke, Parse(path)));
 
@@ -48,21 +56,29 @@ public static class MarkGeometry
         {
             Add(LanternHandle, null, pen);
             Add(LanternRoof, inkFill, pen);
-            Add(LanternGlass, state == MarkState.LidClosed ? lavender : null, pen);
+            Add(LanternGlass, working ? lavender : null, pen);
             Add(LanternBase, inkFill, pen);
-            if (state == MarkState.Live) Add(LanternFlame, lavender, null);
         }
         else
         {
-            Add(Moon, state == MarkState.LidClosed ? lavender : null, pen);
-            if (state != MarkState.Idle)
+            Add(Moon, working ? lavender : null, pen);
+            if (working)
             {
-                var starFill = state == MarkState.LidClosed ? inkFill : lavender;
-                var starPen = new Pen(starFill, 1) { LineJoin = PenLineJoin.Round };
+                var starPen = new Pen(inkFill, 1) { LineJoin = PenLineJoin.Round };
                 starPen.Freeze();
-                Add(Star, starFill, starPen);
+                Add(Star, inkFill, starPen);
             }
         }
+        group.Freeze();
+        return group;
+    }
+
+    /// <summary>The app icon's mark: the lantern with a lavender flame in empty glass.</summary>
+    private static Drawing AppIconMark(double strokeWidth)
+    {
+        var group = new DrawingGroup();
+        group.Children.Add(Build(MarkKind.Lantern, MarkState.Idle, strokeWidth, Theme.Moon));
+        group.Children.Add(new GeometryDrawing(Theme.Brush(Theme.Lavender), null, Parse(LanternFlame)));
         group.Freeze();
         return group;
     }
@@ -75,13 +91,23 @@ public static class MarkGeometry
         return image;
     }
 
-    /// <summary>The mark rendered at <paramref name="pixels"/> square, transparent around it.</summary>
-    public static BitmapSource Render(MarkKind kind, MarkState state, int pixels, Color ink) =>
-        RenderDrawing(Build(kind, state, StrokeFor(pixels), ink), pixels, tile: false);
+    /// <summary>The mark rendered at <paramref name="pixels"/> square, transparent around it, as the tray shows it.</summary>
+    public static BitmapSource Render(MarkKind kind, MarkState state, int pixels, Color ink)
+    {
+        var mark = Build(kind, state, StrokeFor(pixels), ink);
+        if (kind == MarkKind.Lantern)
+        {
+            var scaled = new DrawingGroup { Transform = new ScaleTransform(TrayLanternScale, TrayLanternScale, Grid / 2, Grid / 2) };
+            scaled.Children.Add(mark);
+            scaled.Freeze();
+            mark = scaled;
+        }
+        return RenderDrawing(mark, pixels, tile: false);
+    }
 
-    /// <summary>The app icon: the lit lantern on a Night tile with 22% corners.</summary>
+    /// <summary>The app icon: the lantern with its flame on a Night tile with 22% corners.</summary>
     public static BitmapSource RenderAppIcon(int pixels) =>
-        RenderDrawing(Build(MarkKind.Lantern, MarkState.Live, pixels < 32 ? 2.0 : 1.5, Theme.Moon), pixels, tile: true);
+        RenderDrawing(AppIconMark(pixels < 32 ? 2.0 : 1.5), pixels, tile: true);
 
     /// <summary>Straight-alpha BGRA rows, top row first, as an .ico frame wants them.</summary>
     public static byte[] ToBgra(BitmapSource source)
