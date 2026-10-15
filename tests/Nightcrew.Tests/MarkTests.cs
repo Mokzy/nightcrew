@@ -120,16 +120,16 @@ public sealed class MarkTests
     }
 
     [Fact]
-    public void The_working_flame_is_bigger_than_the_app_icons()
+    public void The_working_flame_is_bigger_than_the_lanterns_original_flame()
     {
         var (tall, small) = Sta.Run(() =>
         {
             var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon));
             var rows = Enumerable.Range(0, 96).Where(y => At(bgra, FlameX, y) is var c && c.A == 255 && c.R == Theme.Amber.R && c.G == Theme.Amber.G).ToList();
-            return (rows.Last() - rows.First(), 7.3 * 4 * 1.18); // the app icon's flame is 7.3 units tall
+            return (rows.Last() - rows.First(), 7.3 * 4 * 1.18); // the original flame is 7.3 units tall
         });
 
-        Assert.True(tall > small * 1.1, $"flame column spans {tall} px, the app icon's flame would be {small:F0} px");
+        Assert.True(tall > small * 1.1, $"flame column spans {tall} px, the original flame would be {small:F0} px");
     }
 
     [Fact]
@@ -180,9 +180,9 @@ public sealed class MarkTests
     }
 
     [Fact]
-    public void The_app_icon_keeps_its_flame_in_empty_glass()
+    public void The_app_icon_is_the_working_lantern_with_its_amber_flame_on_the_tile()
     {
-        var (flame, glass) = Sta.Run(() =>
+        var (flame, core, glass) = Sta.Run(() =>
         {
             var bgra = MarkGeometry.ToBgra(MarkGeometry.RenderAppIcon(64));
             Color Pixel(int x, int y)
@@ -191,10 +191,12 @@ public sealed class MarkTests
                 return Color.FromRgb(bgra[i + 2], bgra[i + 1], bgra[i]);
             }
             // The mark sits on the tile 9.6 px in, at 1.867 px per grid unit.
-            return (Pixel(32, 37), Pixel(26, 42)); // grid (12, 14.6) in the flame; grid (9, 17.5) in the glass beside it
+            // Grid (12, 11.5) in the flame's body, (12, 16) in its core, (9, 17.5) in the glass beside it.
+            return (Pixel(32, 31), Pixel(32, 39), Pixel(26, 42));
         });
 
-        Assert.Equal(Theme.Lavender, flame);
+        Assert.Equal(Theme.Amber, flame);
+        Assert.Equal(Theme.AmberCore, core);
         Assert.Equal(Theme.Night, glass);
     }
 

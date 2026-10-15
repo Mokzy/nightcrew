@@ -89,15 +89,8 @@ public static class MarkGeometry
         return group;
     }
 
-    /// <summary>The app icon's mark: the lantern with a lavender flame in empty glass.</summary>
-    private static Drawing AppIconMark(double strokeWidth)
-    {
-        var group = new DrawingGroup();
-        group.Children.Add(Build(MarkKind.Lantern, MarkState.Idle, strokeWidth, Theme.Moon));
-        group.Children.Add(new GeometryDrawing(Theme.Brush(Theme.Lavender), null, Parse(LanternFlame)));
-        group.Freeze();
-        return group;
-    }
+    /// <summary>The app icon's mark: the working lantern, its amber flame in empty glass, as the tray shows it.</summary>
+    private static Drawing AppIconMark(double strokeWidth) => Build(MarkKind.Lantern, MarkState.Live, strokeWidth, Theme.Moon);
 
     /// <summary>A vector image of the mark for the panel header, 24 units square.</summary>
     public static ImageSource Image(MarkKind kind, MarkState state, double strokeWidth, Color ink)
