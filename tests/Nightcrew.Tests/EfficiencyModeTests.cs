@@ -37,11 +37,15 @@ public sealed class EfficiencyModeTests : IDisposable
 
     private EfficiencyMode Create() => new(RecordPath, _log);
 
-    /// <summary>A child that idles for about 30 seconds, and the start time that identifies it.</summary>
+    /// <summary>
+    /// A child that idles for about 30 seconds at normal priority, and the start time that identifies it. A child
+    /// inherits a below-normal parent's priority, as on a CI runner, and Nightcrew leaves a low priority alone.
+    /// </summary>
     private (Process Process, ProcessRef Ref) StartChild()
     {
         var child = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 30 127.0.0.1 >nul") { UseShellExecute = false, CreateNoWindow = true })!;
         _children.Add(child);
+        child.PriorityClass = ProcessPriorityClass.Normal;
         Assert.True(new ToolhelpProcessTable().TryGetTimes(child.Id, out var start, out _));
         return (child, new ProcessRef(child.Id, start));
     }
