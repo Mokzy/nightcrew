@@ -44,3 +44,15 @@ public interface IEfficiencyMode
     /// <summary>Puts back everything it changed, including what an earlier run left in the record; returns the number of apps.</summary>
     int RestoreAll(string reason);
 }
+
+/// <summary>Reads what the planner needs from Windows.</summary>
+public interface IEfficiencySource
+{
+    EfficiencySnapshot Take(IReadOnlyCollection<int> holderPids);
+
+    /// <summary>The name the panel shows for an app, such as "Microsoft Outlook" for olk.</summary>
+    string DisplayName(ProcessInfo root);
+}
+
+/// <summary>An app that was in Efficiency mode while you were away, as the panel lists it.</summary>
+public sealed record AwayApp(string DisplayName, string RootName);
