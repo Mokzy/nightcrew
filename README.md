@@ -19,6 +19,8 @@ normally would.
   always did.
 - **Leaves your settings alone.** It changes power settings only while an
   agent works and puts them back afterwards, even after a crash.
+- **Agents get the machine.** While you're away, apps they don't need go into
+  Efficiency mode, the way Task Manager does it.
 - **Light.** One 1.6 MB exe in the tray, using well under 1% of a CPU core.
 
 ## Install
@@ -43,9 +45,13 @@ build attestation for checking the download.
 2. **You close the lid.** The laptop keeps running and locks itself. Nightcrew
    has saved your power settings, then set the lid to Do nothing and the sleep
    timer to Never.
-3. **The work ends.** Five minutes after the last sign of work, your settings
+3. **Other apps ease off.** Five minutes later, apps the agents don't need go
+   into Efficiency mode. Agents, what they're connected to, terminals,
+   editors, browsers with a Claude or Codex connector and games are left
+   alone. Everything's back to normal the moment you open the lid.
+4. **The work ends.** Five minutes after the last sign of work, your settings
    go back.
-4. **It sleeps.** Once nobody has touched the laptop for 5 minutes, it follows
+5. **It sleeps.** Once nobody has touched the laptop for 5 minutes, it follows
    your lid action: sleep, hibernate or nothing. If Windows hasn't gone to
    sleep 5 minutes later, Nightcrew hibernates it.
 
@@ -68,7 +74,10 @@ what happens when the work is done.
   Nightcrew can't detect on its own.
 - **Pause** hands the lid back to Windows until you resume.
 - **Settings**, or right-click the lantern: battery floor, lid-closed limit,
-  lock on lid close, start at login and the tray mark.
+  lock on lid close, start at login, Efficiency mode while away, the apps to
+  always leave alone, and the tray mark.
+- After you've been away, the panel lists the apps that were in Efficiency
+  mode. Switch on **Leave alone** for any that should keep full speed.
 
 <br clear="right">
 
@@ -115,14 +124,17 @@ anything, run `nightcrew --dry-run` and read the log.
 | `GpuPercent` | 30 | GPU engine threshold, % |
 | `SampleSeconds` | 10 | Seconds between checks |
 | `Mark` | `lantern` | The tray mark: `lantern` or `moon` |
+| `EfficiencyWhileAway` | true | Put apps the agents don't need into Efficiency mode while you're away |
+| `LeaveAlone` | none | Process names never put into Efficiency mode |
+| `ConnectorHostNames` | `chrome-native-host`, `extension-host` | Browser connector helpers; their browser is left alone |
 
 </details>
 
 ## Uninstall
 
 Quit Nightcrew from the tray, then run `.\nightcrew.exe --uninstall` in its
-folder. That puts your settings back and removes the startup entry and the
-watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
+folder. That puts your settings back, takes any app out of Efficiency mode,
+and removes the startup entry and the watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
 the settings and log gone too.
 
 ## Credits

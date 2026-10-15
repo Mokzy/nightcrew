@@ -228,7 +228,75 @@ Last Result.
 - `restore.json` is gone.
 - The task's Last Result is 0.
 
-## 9. Uninstall
+## Efficiency mode tools
+
+**Priority log.** Open Notepad and leave it open. In a terminal (terminals are
+left alone, so this keeps running at full speed), delete
+`$env:TEMP\nightcrew-priority.txt` if it exists, then run:
+
+```powershell
+while ($true) { "{0:T} {1}" -f (Get-Date), (Get-Process notepad | Select-Object -First 1).PriorityClass | Add-Content $env:TEMP\nightcrew-priority.txt; Start-Sleep -Seconds 30 }
+```
+
+`Idle` means Notepad is in Efficiency mode; `Normal` means it's back.
+
+## 9. Efficiency mode, dry run
+
+**Do.** Open Notepad and a browser without the Claude or Codex extension. Run
+`.\nightcrew.exe --dry-run` from the exe's folder. Plug the laptop in, start
+a long agent task with N = 2 and close the lid. After 10 minutes, open the lid
+and quit Nightcrew from the tray.
+
+**Look at.** The log.
+
+**Pass.**
+
+- About 5 minutes after you closed the lid, the log shows `[dry run] would put
+  into Efficiency mode:` lines for Notepad and the browser.
+- A `Left alone:` line names the agent's app or terminal (`agent`), any
+  browser with a connector (`connector`), and apps on the built-in lists.
+- When you open the lid, the log shows `[dry run] would end Efficiency mode
+  for` the same number of apps, with `lid opened`.
+
+## 10. Efficiency mode on and off
+
+**Do.** Start Nightcrew normally and start the priority log. Plug the laptop
+in, start a long agent task with N = 2 and close the lid. After 15 minutes,
+open the lid and open the panel.
+
+**Look at.** The priority log, the log and the panel.
+
+**Pass.**
+
+- About 5 minutes after you closed the lid, the priority log turns `Idle` and
+  the log shows `Efficiency mode on: Notepad (notepad, 1 process)`.
+- The log shows `Efficiency mode off for` some apps with `lid opened` at the
+  moment you opened the lid, and the next priority log line says `Normal`.
+- The panel lists Notepad under "In Efficiency mode while you were away".
+  Turning on its **Leave alone** switch adds `notepad` under Settings >
+  Always leave alone; the × takes it off again.
+- `%LOCALAPPDATA%\Nightcrew\efficiency.json` is gone.
+
+## 11. Efficiency mode after a crash
+
+**Do.** Start Nightcrew normally and start the priority log. In a second
+terminal, run `Start-Sleep -Seconds 600; Stop-Process -Name nightcrew`, which
+ends Nightcrew in 10 minutes. Plug the laptop in, start a long agent task with
+N = 4 and close the lid. After 20 minutes, open the lid. Start Nightcrew again
+afterwards.
+
+**Look at.** The priority log, the log and `efficiency.json`.
+
+**Pass.**
+
+- The priority log turns `Idle` about 5 minutes after you closed the lid, and
+  back to `Normal` within 5 minutes of Nightcrew ending, before you open the
+  lid.
+- The log shows `Efficiency mode off for 1 app: watchdog` (or more apps, if
+  more were open).
+- `efficiency.json` is gone.
+
+## 12. Uninstall
 
 **Do.** Start Nightcrew normally. Start an agent task and wait until the
 settings check shows `0x00000000`. In Task Manager, end `nightcrew.exe`.
@@ -248,7 +316,7 @@ Also look at the settings check and `restore.json`.
 
 - Both queries report that the value or task can't be found.
 - The settings check shows your values.
-- `restore.json` is gone.
+- `restore.json` and `efficiency.json` are gone.
 
 When you're done, set your lid action back to what you normally use. To keep
 using Nightcrew, run `nightcrew.exe` again.
