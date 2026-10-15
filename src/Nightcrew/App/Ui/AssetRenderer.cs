@@ -63,7 +63,7 @@ public static class AssetRenderer
             written.Add(path);
         }
         Write("tile.png", MarkGeometry.RenderAppIcon(512));
-        foreach (var state in new[] { MarkState.Idle, MarkState.Live, MarkState.LidClosed })
+        foreach (var state in new[] { MarkState.Idle, MarkState.Live })
         {
             Write($"mark-{state.ToString().ToLowerInvariant()}.png", MarkGeometry.Render(MarkKind.Lantern, state, 192, Theme.Moon));
         }

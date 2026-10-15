@@ -44,10 +44,10 @@ public sealed class PanelModelTests
     }
 
     [Fact]
-    public void Working_with_the_lid_closed_uses_the_lid_closed_mark()
+    public void Working_with_the_lid_closed_uses_the_same_working_mark()
     {
         var view = PanelModel.From(Snap(Mode.Armed, live: true, lid: LidState.Closed), 20);
-        Assert.Equal(MarkState.LidClosed, view.Mark);
+        Assert.Equal(MarkState.Live, view.Mark);
     }
 
     [Fact]

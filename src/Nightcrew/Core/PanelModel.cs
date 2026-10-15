@@ -2,8 +2,11 @@ namespace Nightcrew.Core;
 
 public enum PanelState { Quiet, Working, Paused }
 
-/// <summary>Which version of the mark to draw: unlit, lit, or lit with the lid closed.</summary>
-public enum MarkState { Idle, Live, LidClosed }
+/// <summary>
+/// Which version of the mark to draw: unlit, or lit while Nightcrew holds the laptop awake. There's no separate
+/// lid-closed look; nobody sees the tray with the lid shut.
+/// </summary>
+public enum MarkState { Idle, Live }
 
 public sealed record PanelFact(string Label, string Value);
 
@@ -39,12 +42,11 @@ public static class PanelModel
 
         if (snapshot.Mode == Mode.Armed)
         {
-            var mark = snapshot.Lid == LidState.Closed ? MarkState.LidClosed : MarkState.Live;
             var first = snapshot.Holders.Count > 0 ? $" ({snapshot.Holders[0].Label})" : "";
             return new PanelView(PanelState.Working, "Working ", "through the night.",
                 "Close the lid. Your laptop keeps working, then does what your lid normally does.",
                 snapshot.Holders, [battery, new PanelFact("When done", WhenDone(snapshot.OwnerLid))],
-                snapshot.Hold, "Pause", warning, mark, Tooltip("working" + first));
+                snapshot.Hold, "Pause", warning, MarkState.Live, Tooltip("working" + first));
         }
 
         if (snapshot.Live)

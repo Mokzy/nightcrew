@@ -46,15 +46,13 @@ public sealed class MarkTests
     [Theory]
     [InlineData(MarkKind.Lantern)]
     [InlineData(MarkKind.MoonAndStar)]
-    public void Each_mark_draws_its_three_states_differently_and_inside_the_grid(MarkKind kind)
+    public void Each_mark_draws_its_two_states_differently_and_inside_the_grid(MarkKind kind)
     {
         Sta.Run(() =>
         {
-            var states = new[] { MarkState.Idle, MarkState.Live, MarkState.LidClosed };
+            var states = new[] { MarkState.Idle, MarkState.Live };
             var pixels = states.Select(state => MarkGeometry.ToBgra(MarkGeometry.Render(kind, state, 32, Theme.Moon))).ToList();
             Assert.NotEqual(pixels[0], pixels[1]);
-            Assert.NotEqual(pixels[1], pixels[2]);
-            Assert.NotEqual(pixels[0], pixels[2]);
 
             foreach (var state in states)
             {
@@ -81,20 +79,89 @@ public sealed class MarkTests
     }
 
     [Fact]
-    public void A_light_taskbar_gets_the_deep_lavender_flame()
+    public void A_light_taskbar_gets_the_deep_lavender()
     {
         Sta.Run(() =>
         {
-            Assert.Equal(Theme.Lavender, CentreOfFlame(Theme.Moon));
-            Assert.Equal(Theme.LavenderDeep, CentreOfFlame(Theme.Night));
+            Assert.Equal(Theme.Lavender, CentreOfGlass(Theme.Moon));
+            Assert.Equal(Theme.LavenderDeep, CentreOfGlass(Theme.Night));
         });
 
-        static Color CentreOfFlame(Color ink)
+        static Color CentreOfGlass(Color ink)
         {
             var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, ink));
-            var i = (58 * 96 + 48) * 4; // grid (12, 14.6) at 4 px per unit
+            var i = (58 * 96 + 48) * 4; // grid (12, 14.5) at 4 px per unit
             return Color.FromRgb(bgra[i + 2], bgra[i + 1], bgra[i]);
         }
+    }
+
+    /// <summary>The colour at a point of a 96 px render (4 px per grid unit), with its alpha.</summary>
+    private static Color At(byte[] bgra, int x, int y)
+    {
+        var i = (y * 96 + x) * 4;
+        return Color.FromArgb(bgra[i + 3], bgra[i + 2], bgra[i + 1], bgra[i]);
+    }
+
+    [Fact]
+    public void Working_fills_the_lantern_glass_and_idle_leaves_it_empty()
+    {
+        var (working, idle) = Sta.Run(() => (
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon)), 36, 70),
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Idle, 96, Theme.Moon)), 36, 70)));
+
+        // Grid (9, 17.5): low in the glass, beside where a flame would be.
+        Assert.Equal(Theme.Lavender, Color.FromRgb(working.R, working.G, working.B));
+        Assert.Equal(255, working.A);
+        Assert.Equal(0, idle.A);
+    }
+
+    [Fact]
+    public void Working_fills_the_moon_and_idle_leaves_it_empty()
+    {
+        var (working, idle) = Sta.Run(() => (
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.MoonAndStar, MarkState.Live, 96, Theme.Moon)), 24, 60),
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.MoonAndStar, MarkState.Idle, 96, Theme.Moon)), 24, 60)));
+
+        // Grid (6, 15): inside the crescent.
+        Assert.Equal(Theme.Lavender, Color.FromRgb(working.R, working.G, working.B));
+        Assert.Equal(0, idle.A);
+    }
+
+    [Theory]
+    [InlineData(16)]
+    [InlineData(24)]
+    [InlineData(32)]
+    public void The_tray_lantern_fills_the_height_of_the_icon(int size)
+    {
+        var (top, bottom) = Sta.Run(() =>
+        {
+            var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Idle, size, Theme.Moon));
+            var rows = Enumerable.Range(0, size).Where(y => Enumerable.Range(0, size).Any(x => bgra[(y * size + x) * 4 + 3] > 128)).ToList();
+            return (rows.First(), rows.Last());
+        });
+
+        // About a pixel of room at most, above and below: the slot is all Windows gives a tray icon.
+        Assert.InRange(top, 0, 1);
+        Assert.InRange(bottom, size - 2, size - 1);
+    }
+
+    [Fact]
+    public void The_app_icon_keeps_its_flame_in_empty_glass()
+    {
+        var (flame, glass) = Sta.Run(() =>
+        {
+            var bgra = MarkGeometry.ToBgra(MarkGeometry.RenderAppIcon(64));
+            Color Pixel(int x, int y)
+            {
+                var i = (y * 64 + x) * 4;
+                return Color.FromRgb(bgra[i + 2], bgra[i + 1], bgra[i]);
+            }
+            // The mark sits on the tile 9.6 px in, at 1.867 px per grid unit.
+            return (Pixel(32, 37), Pixel(26, 42)); // grid (12, 14.6) in the flame; grid (9, 17.5) in the glass beside it
+        });
+
+        Assert.Equal(Theme.Lavender, flame);
+        Assert.Equal(Theme.Night, glass);
     }
 
     [Fact]
