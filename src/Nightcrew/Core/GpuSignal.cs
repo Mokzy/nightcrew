@@ -17,6 +17,9 @@ public sealed class GpuSignal(IGpuUsage gpu, double thresholdPercent, Func<int, 
     /// <summary>Every process at or above the threshold in the last busy sample, busiest first.</summary>
     public IReadOnlyList<Holder> Holders { get; private set; } = [];
 
+    /// <summary>The pids behind <see cref="Holders"/>, so Efficiency mode leaves their apps alone.</summary>
+    public IReadOnlyList<int> BusyPids { get; private set; } = [];
+
     public bool Sample(TimeSpan now)
     {
         var busy = gpu.PercentByPid()
@@ -25,6 +28,7 @@ public sealed class GpuSignal(IGpuUsage gpu, double thresholdPercent, Func<int, 
             .ToList();
         if (busy.Count == 0) return false;
         LastBusyPid = busy[0].Key;
+        BusyPids = busy.Select(pair => pair.Key).ToList();
         Holders = busy.Select(pair => new Holder(nameOf?.Invoke(pair.Key) ?? $"pid {pair.Key}", $"GPU {Math.Round(pair.Value):0}%")).ToList();
         return true;
     }

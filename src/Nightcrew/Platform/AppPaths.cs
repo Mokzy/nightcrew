@@ -7,5 +7,6 @@ public static class AppPaths
 
     public static string SettingsFile => Path.Combine(DataDir, "settings.json");
     public static string RestoreFile => Path.Combine(DataDir, "restore.json");
+    public static string EfficiencyFile => Path.Combine(DataDir, "efficiency.json");
     public static string LogFile => Path.Combine(DataDir, "nightcrew.log");
 }

@@ -3,7 +3,7 @@ using Nightcrew.Platform;
 
 namespace Nightcrew.App;
 
-/// <summary>Runs from the scheduled task: restores the owner's power settings if the app is gone but left a record.</summary>
+/// <summary>Runs from the scheduled task: if the app is gone but left records, restores the power settings and takes apps out of Efficiency mode.</summary>
 public static class Watchdog
 {
     public static int Run(ILog log)
@@ -22,6 +22,7 @@ public static class Watchdog
                 log.Info("Watchdog: Nightcrew is not running but left a restore record; restoring power settings");
                 journal.Restore();
             }
+            new EfficiencyMode(AppPaths.EfficiencyFile, log).RestoreAll("watchdog");
             return 0;
         }
         finally
