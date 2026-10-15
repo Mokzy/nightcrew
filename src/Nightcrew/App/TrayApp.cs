@@ -28,15 +28,30 @@ public sealed class TrayApp : ApplicationContext
     private readonly TimeSpan _period;
     private readonly System.Threading.Timer _timer;
     private readonly bool _watchdogMissing;
+    private readonly IEfficiencyMode _efficiency;
+    private readonly Func<TimeSpan> _idleTime;
+    private readonly Func<IReadOnlyList<NamedApp>> _wouldSlowNow;
+    private readonly System.Threading.Timer _inputTimer;
+    private static readonly TimeSpan InputCheck = TimeSpan.FromSeconds(1);
     private EngineSnapshot _snapshot = EngineSnapshot.Initial; // UI thread
     private PanelView? _view; // UI thread
+    private IReadOnlyList<NamedApp>? _addable; // UI thread: the open Add an app list, or null
     private bool _closed;
     private bool _sessionEnding;
 
-    /// <summary>Subscribes to <paramref name="events"/> but does not own it; the caller disposes it after this.</summary>
+    /// <summary>
+    /// Subscribes to <paramref name="events"/> but does not own it; the caller disposes it after this. <paramref name="efficiency"/>
+    /// is called directly, without the lock, whenever apps must come out of Efficiency mode at once.
+    /// <paramref name="wouldSlowNow"/> fills Settings' Add an app list and is called under the lock.
+    /// </summary>
     public TrayApp(Settings settings, bool dryRun, string exePath, PowerEventsWindow events,
-        ActivityMonitor activity, Controller controller, Engine engine, ILog log)
+        ActivityMonitor activity, Controller controller, Engine engine, ILog log, IEfficiencyMode efficiency, Func<TimeSpan> idleTime,
+        Func<IReadOnlyList<NamedApp>> wouldSlowNow)
     {
+        _efficiency = efficiency;
+        _idleTime = idleTime;
+        _wouldSlowNow = wouldSlowNow;
+        _inputTimer = new System.Threading.Timer(_ => CheckInput(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _settings = settings;
         _dryRun = dryRun;
         _exePath = exePath;
@@ -50,16 +65,24 @@ public sealed class TrayApp : ApplicationContext
             new PanelActions(
                 Hold: () => SetHold(!_snapshot.Hold),
                 Pause: () => SetPaused(!_snapshot.Paused),
-                Settings: () => _panel!.ShowPage(settings: true)),
+                Settings: () => ShowPage(settings: true)),
             new SettingsActions(
-                Back: () => _panel!.ShowPage(settings: false),
+                Back: () => ShowPage(settings: false),
                 BatteryFloor: value => ChangeSetting("Battery floor", () => _settings.BatteryFloorPercent = value),
                 LidClosedLimit: value => ChangeSetting("Lid-closed limit", () => _settings.LidClosedCapHours = value),
                 LockOnLidClose: on => ChangeSetting("Lock when lid closes", () => _settings.LockOnLidClose = on),
                 StartAtLogin: SetStartAtLogin,
                 Mark: kind => ChangeSetting("Tray mark", () => _settings.Mark = MarkKinds.Name(kind)),
                 OpenLog: OpenLog,
-                Quit: Quit));
+                Quit: Quit,
+                EfficiencyWhileAway: on =>
+                {
+                    _addable = null;
+                    ChangeSetting("Efficiency mode while away", () => _settings.EfficiencyWhileAway = on);
+                },
+                ToggleAddList: ToggleAddList,
+                AddFullSpeed: app => SetFullSpeed(app.RootName, app.DisplayName),
+                RemoveFullSpeed: name => SetFullSpeed(name, null)));
         UiSafety.Install(_panel.Dispatcher, log);
 
         if (!dryRun)
@@ -75,9 +98,19 @@ public sealed class TrayApp : ApplicationContext
         _tray.Visible = true;
 
         engine.Lid = events.Lid;
-        events.LidChanged += lid => Apply("Lid change", () => engine.Lid = lid);
-        events.Suspending += engine.NoteSuspend; // lock-free: the timer thread may hold the gate inside SetSuspendState
+        events.LidChanged += lid =>
+        {
+            if (lid != LidState.Closed) efficiency.RestoreAll("lid opened"); // at once, not after the tick
+            Apply("Lid change", () => engine.Lid = lid);
+        };
+        events.Suspending += () =>
+        {
+            // Lock-free: the timer thread may hold the gate inside SetSuspendState. Efficiency mode has its own lock.
+            efficiency.RestoreAll("suspend");
+            engine.NoteSuspend();
+        };
         events.Resumed += () => Apply("Resume", controller.OnResume);
+        events.SessionEnding += () => efficiency.RestoreAll("session end");
         events.SessionEnding += () => Guarded("Restore at session end", () =>
         {
             _sessionEnding = true; // no tick may re-arm while Windows ends the session
@@ -115,6 +148,9 @@ public sealed class TrayApp : ApplicationContext
             if (_closed || _sessionEnding) return;
             _engine.Tick();
             var snapshot = _engine.Snapshot;
+            // Check for keyboard and mouse input every second, but only while apps are in Efficiency mode.
+            var check = snapshot.EfficiencyApps > 0 ? InputCheck : Timeout.InfiniteTimeSpan;
+            _inputTimer.Change(check, check);
             _ui.Post(_ => Show(snapshot), null);
         }
         catch (Exception ex)
@@ -151,7 +187,31 @@ public sealed class TrayApp : ApplicationContext
 
     private void RenderPanel()
     {
-        if (_view is not null) _panel.Render(_view, SettingsModel.From(_settings), Mark);
+        if (_view is not null) _panel.Render(_view, SettingsModel.From(_settings, _addable), Mark);
+    }
+
+    /// <summary>Switches page, with the Add an app list closed.</summary>
+    private void ShowPage(bool settings)
+    {
+        _addable = null;
+        _panel.ShowPage(settings);
+        RenderPanel();
+    }
+
+    /// <summary>Opens the Add an app list with the apps Nightcrew would slow right now, or closes it.</summary>
+    private void ToggleAddList()
+    {
+        if (_addable is null)
+        {
+            IReadOnlyList<NamedApp> apps = [];
+            Guarded("Add an app", () => apps = _wouldSlowNow());
+            _addable = apps;
+        }
+        else
+        {
+            _addable = null;
+        }
+        RenderPanel();
     }
 
     /// <summary>
@@ -171,11 +231,10 @@ public sealed class TrayApp : ApplicationContext
                     _panel.HidePanel();
                     break;
                 case PanelClick.SwitchPage:
-                    _panel.ShowPage(settings);
+                    ShowPage(settings);
                     break;
                 case PanelClick.Open:
-                    _panel.ShowPage(settings);
-                    RenderPanel();
+                    ShowPage(settings);
                     _panel.ShowNear(Cursor.Position);
                     break;
             }
@@ -216,7 +275,41 @@ public sealed class TrayApp : ApplicationContext
 
     private void SetHold(bool on) => Apply("Hold awake", () => _activity.Hold = on);
 
-    private void SetPaused(bool on) => Apply("Pause", () => _engine.Paused = on);
+    private void SetPaused(bool on)
+    {
+        if (on) _efficiency.RestoreAll("pause");
+        Apply("Pause", () => _engine.Paused = on);
+    }
+
+    /// <summary>
+    /// Keeps an app at full speed under the name Settings shows, or with no <paramref name="label"/> takes it off the
+    /// list. Closes the Add an app list.
+    /// </summary>
+    private void SetFullSpeed(string rootName, string? label)
+    {
+        _addable = null;
+        ChangeSetting("Keep at full speed", () =>
+        {
+            bool Same(string name) => string.Equals(name, rootName, StringComparison.OrdinalIgnoreCase);
+            var names = _settings.LeaveAlone.Where(name => !Same(name)).ToList();
+            var labels = (_settings.LeaveAloneLabels ?? []).Where(pair => !Same(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            if (label is not null)
+            {
+                names.Add(rootName);
+                labels[rootName] = label;
+            }
+            _settings.LeaveAlone = names.ToArray();
+            _settings.LeaveAloneLabels = labels;
+        });
+    }
+
+    /// <summary>Timer thread, every second while apps are in Efficiency mode: any input brings them back at once.</summary>
+    private void CheckInput()
+    {
+        if (_closed || _idleTime() >= TimeSpan.FromSeconds(2)) return;
+        _inputTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        if (_efficiency.RestoreAll("input") > 0 && !_closed) _timer.Change(TimeSpan.Zero, _period);
+    }
 
     /// <summary>The Run key first: if writing it fails, the setting stays as it was and nothing is saved.</summary>
     private void SetStartAtLogin(bool on) => ChangeSetting("Start at login", () =>
@@ -280,6 +373,8 @@ public sealed class TrayApp : ApplicationContext
     private void Shutdown()
     {
         _timer.Dispose();
+        _inputTimer.Dispose();
+        _efficiency.RestoreAll("quit");
         Guarded("Restore on exit", () =>
         {
             if (_closed) return;

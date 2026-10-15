@@ -61,6 +61,7 @@ internal static class Program
         try
         {
             var restored = new RestoreJournal(new PowrProfPolicy(), AppPaths.RestoreFile, log).Restore();
+            new EfficiencyMode(AppPaths.EfficiencyFile, log).RestoreAll("uninstall"); // the watchdog that would do it is going
             Autostart.Set(false, exePath);
             WatchdogTask.Unregister(log);
             log.Info("Uninstalled: start at login and the watchdog task removed");
@@ -99,6 +100,10 @@ internal static class Program
         // The panel is small and rarely open; GPU rendering would keep about 75 MB allocated for the rest of the session.
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
 
+        // Apps a crash left in Efficiency mode go back first, with the real class even in a dry run.
+        new EfficiencyMode(AppPaths.EfficiencyFile, log).RestoreAll("startup");
+        IEfficiencyMode efficiency = dryRun ? new DryRunEfficiency(log) : new EfficiencyMode(AppPaths.EfficiencyFile, log);
+
         var clock = new SystemClock();
         using var events = new PowerEventsWindow();
         using var realKeepAwake = new KeepAwake();
@@ -111,17 +116,21 @@ internal static class Program
         var journal = new RestoreJournal(policy, AppPaths.RestoreFile, log);
 
         var grace = TimeSpan.FromMinutes(settings.GraceMinutes);
+        var processes = new TickProcessTable(new ToolhelpProcessTable(), clock); // one list per tick, shared
+        var gpuSignal = new GpuSignal(gpu, settings.GpuPercent, ProcessName);
         IBusySignal[] signals =
         [
             new TranscriptSignal(transcripts, settings.TranscriptRoots, settings.IgnorePathContains, grace),
-            new AgentTreeSignal(new ToolhelpProcessTable(), settings),
-            new GpuSignal(gpu, settings.GpuPercent, ProcessName),
+            new AgentTreeSignal(processes, settings),
+            gpuSignal,
         ];
         var activity = new ActivityMonitor(signals, grace);
         var controller = new Controller(settings);
-        var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, clock);
+        var coordinator = new EfficiencyCoordinator(efficiency, new EfficiencySource(processes), settings, () => gpuSignal.BusyPids, log);
+        var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, clock, coordinator);
 
-        using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log);
+        using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log, efficiency,
+            () => realPower.IdleTime, coordinator.WouldSlowNow);
         Application.Run(tray);
     }
 

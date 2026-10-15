@@ -3,9 +3,12 @@ namespace Nightcrew.Core;
 /// <summary>What needs the owner's attention, most important first.</summary>
 public enum EngineWarning { None, PolicyBlocks, ArmBackoff, RestorePending, Stopped }
 
-/// <summary>Everything the tray and the panel show, taken at the end of a tick.</summary>
+/// <summary>
+/// Everything the tray and the panel show, taken at the end of a tick. <paramref name="EfficiencyApps"/> counts the apps in
+/// Efficiency mode now.
+/// </summary>
 public sealed record EngineSnapshot(Mode Mode, LidState Lid, bool Live, IReadOnlyList<Holder> Holders, PowerSource Source,
-    int? BatteryPercent, LidAction OwnerLid, bool Hold, bool Paused, EngineWarning Warning)
+    int? BatteryPercent, LidAction OwnerLid, bool Hold, bool Paused, EngineWarning Warning, int EfficiencyApps = 0)
 {
     public static EngineSnapshot Initial { get; } =
         new(Mode.Idle, LidState.Unknown, false, [], PowerSource.AC, null, LidAction.Sleep, false, false, EngineWarning.None);
@@ -13,7 +16,7 @@ public sealed record EngineSnapshot(Mode Mode, LidState Lid, bool Live, IReadOnl
 
 /// <summary>One tick: sample activity, ask the controller, carry out its commands.</summary>
 public sealed class Engine(ActivityMonitor activity, Controller controller, RestoreJournal journal,
-    IPowerPolicy policy, IKeepAwake keepAwake, ISystemPower power, ILog log, IClock clock)
+    IPowerPolicy policy, IKeepAwake keepAwake, ISystemPower power, ILog log, IClock clock, EfficiencyCoordinator? efficiency = null)
 {
     private static readonly TimeSpan CanWriteCheckEvery = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RestoreRetryEvery = TimeSpan.FromSeconds(60);
@@ -56,6 +59,7 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
             var backingOff = _armBlockedUntil is { } until && now < until;
             var inputs = new Inputs(activity.Live, Lid, source, battery, power.IdleTime, Paused, policyAllows && !backingOff, ownerLid);
             foreach (var command in controller.Step(inputs, now)) Run(command, now);
+            efficiency?.Step(controller.Mode, Lid, inputs.IdleTime, ownerLid);
             RetryRestore(now);
 
             var warning = !policyAllows ? EngineWarning.PolicyBlocks
@@ -64,7 +68,7 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
                 : controller.Spent ? EngineWarning.Stopped
                 : EngineWarning.None;
             Snapshot = new EngineSnapshot(controller.Mode, Lid, activity.Live, activity.Holders, source, battery,
-                ownerLid, activity.Hold, Paused, warning);
+                ownerLid, activity.Hold, Paused, warning, efficiency?.AppCount ?? 0);
         }
         catch (Exception ex)
         {
@@ -118,6 +122,8 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
                     keepAwake.Hold();
                     break;
                 case Command.Disarm:
+                    // Apps first, so nothing stays slowed down once the laptop goes to sleep.
+                    efficiency?.RestoreAll(controller.Spent ? "battery floor or lid-closed limit" : "work ended");
                     ReleaseAndRestore(now);
                     break;
                 case Command.Lock:

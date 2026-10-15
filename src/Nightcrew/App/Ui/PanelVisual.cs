@@ -10,12 +10,17 @@ using Nightcrew.Core;
 
 namespace Nightcrew.App.Ui;
 
-/// <summary>What the panel's three controls do. Null when the panel is only drawn, as for the README.</summary>
+/// <summary>What the panel's controls do. Null when the panel is only drawn, as for the README.</summary>
 public sealed record PanelActions(Action Hold, Action Pause, Action Settings);
 
-/// <summary>What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.</summary>
+/// <summary>
+/// What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.
+/// <paramref name="ToggleAddList"/> opens or closes the Add an app list; <paramref name="RemoveFullSpeed"/> gets a process name.
+/// </summary>
 public sealed record SettingsActions(Action Back, Action<int> BatteryFloor, Action<int> LidClosedLimit,
-    Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit);
+    Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit,
+    Action<bool>? EfficiencyWhileAway = null, Action? ToggleAddList = null, Action<NamedApp>? AddFullSpeed = null,
+    Action<string>? RemoveFullSpeed = null);
 
 /// <summary>Builds the click panel from a <see cref="PanelView"/>. The same tree is shown in the window and rendered for the README.</summary>
 public static class PanelVisual
@@ -54,7 +59,9 @@ public static class PanelVisual
         body.Children.Add(Segments("Lid-closed limit", page.LidClosedLimit, actions?.LidClosedLimit));
         body.Children.Add(Hairline());
         body.Children.Add(SwitchRow("Lock when lid closes", page.LockOnLidClose, actions?.LockOnLidClose, bottom: 12));
-        body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 0));
+        body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 12));
+        body.Children.Add(SwitchRow("Efficiency mode while away", page.EfficiencyWhileAway, actions?.EfficiencyWhileAway, bottom: 0));
+        if (page.EfficiencyWhileAway) body.Children.Add(FullSpeed(page, actions));
         body.Children.Add(Hairline());
         body.Children.Add(Text("Tray mark", 12.5, Theme.Moon));
         body.Children.Add(Segments("Tray mark", page.Mark, actions?.Mark));
@@ -219,6 +226,74 @@ public static class PanelVisual
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(12, 10, 12, 10),
             Margin = new Thickness(0, 0, 0, 12),
+            Child = rows,
+        };
+    }
+
+    /// <summary>
+    /// Under the Efficiency mode switch: the apps you keep at full speed, then Add an app, which opens the apps
+    /// Nightcrew would slow right now.
+    /// </summary>
+    private static StackPanel FullSpeed(SettingsPage page, SettingsActions? actions)
+    {
+        var section = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        section.Children.Add(Text("Keep at full speed", 11, Theme.MoonFaint, bottom: 2));
+        foreach (var app in page.FullSpeed ?? []) section.Children.Add(KeptRow(app, actions?.RemoveFullSpeed));
+        var add = Text("+ Add an app", 12.5, Theme.MoonMuted);
+        add.Margin = new Thickness(0, 6, 0, 0);
+        add.HorizontalAlignment = HorizontalAlignment.Left;
+        AutomationProperties.SetName(add, "Add an app");
+        if (actions?.ToggleAddList is { } toggle) Clickable(add, toggle, Theme.MoonMuted, Theme.Moon);
+        section.Children.Add(add);
+        if (page.Addable is { } addable) section.Children.Add(AddList(addable, actions?.AddFullSpeed));
+        return section;
+    }
+
+    /// <summary>A kept app's name, then the cross that takes it off, in reading order.</summary>
+    private static Grid KeptRow(FullSpeedApp app, Action<string>? remove)
+    {
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = Text(app.Label, 12.5, Theme.Moon);
+        label.TextWrapping = TextWrapping.NoWrap;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(label);
+        var cross = Text("\u00D7", 14, Theme.MoonFaint);
+        cross.Margin = new Thickness(12, 0, 0, 0);
+        cross.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(cross, "Remove " + app.Label);
+        if (remove is not null) Clickable(cross, () => remove(app.Name), Theme.MoonFaint, Theme.Moon);
+        Grid.SetColumn(cross, 1);
+        row.Children.Add(cross);
+        return row;
+    }
+
+    /// <summary>The apps Nightcrew would slow right now, on a raised card; clicking one keeps it at full speed.</summary>
+    private static Border AddList(IReadOnlyList<NamedApp> apps, Action<NamedApp>? add)
+    {
+        var rows = new StackPanel();
+        if (apps.Count == 0)
+        {
+            rows.Children.Add(new Border { Padding = new Thickness(8, 5, 8, 5), Child = Text("Nothing to add right now", 12.5, Theme.MoonFaint) });
+        }
+        foreach (var app in apps)
+        {
+            var label = Text(app.DisplayName, 12.5, Theme.Moon);
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            var row = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 5, 8, 5), Background = Brushes.Transparent, Child = label };
+            AutomationProperties.SetName(row, "Add " + app.DisplayName);
+            if (add is not null) Clickable(row, () => add(app), Colors.Transparent, Theme.NightHover);
+            rows.Children.Add(row);
+        }
+        return new Border
+        {
+            Background = Theme.Brush(Theme.NightRaised),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(4),
+            Margin = new Thickness(0, 6, 0, 0),
             Child = rows,
         };
     }

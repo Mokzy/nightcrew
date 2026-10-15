@@ -23,6 +23,13 @@ public sealed class Settings
     [DataMember] public double GpuPercent { get; set; }
     [DataMember] public int SampleSeconds { get; set; }
     [DataMember] public string Mark { get; set; } = MarkKinds.LanternName;
+    [DataMember] public bool EfficiencyWhileAway { get; set; }
+    [DataMember] public string[] LeaveAlone { get; set; } = [];
+
+    /// <summary>The name Settings shows for each app on <see cref="LeaveAlone"/>, by process name.</summary>
+    [DataMember] public Dictionary<string, string> LeaveAloneLabels { get; set; } = [];
+
+    [DataMember] public string[] ConnectorHostNames { get; set; } = [];
 
     [OnDeserializing]
     private void OnDeserializing(StreamingContext context) => ApplyDefaults();
@@ -45,5 +52,9 @@ public sealed class Settings
         GpuPercent = 30;
         SampleSeconds = 10;
         Mark = MarkKinds.LanternName;
+        EfficiencyWhileAway = true;
+        LeaveAlone = [];
+        LeaveAloneLabels = [];
+        ConnectorHostNames = ["chrome-native-host", "extension-host"];
     }
 }

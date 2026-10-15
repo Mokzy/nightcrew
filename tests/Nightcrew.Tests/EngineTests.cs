@@ -19,6 +19,8 @@ public sealed class EngineTests : IDisposable
     private readonly FakePolicy _policy;
     private readonly FakeKeepAwake _keepAwake;
     private readonly FakeSystemPower _power;
+    private readonly FakeEfficiency _efficiency;
+    private readonly FakeSource _source = new();
     private readonly RestoreJournal _journal;
     private readonly Controller _controller;
     private readonly Engine _engine;
@@ -28,10 +30,11 @@ public sealed class EngineTests : IDisposable
         _policy = new FakePolicy(Owner, _calls);
         _keepAwake = new FakeKeepAwake(_calls);
         _power = new FakeSystemPower(_calls);
+        _efficiency = new FakeEfficiency(_calls);
         _journal = new RestoreJournal(_policy, RecordPath, _log);
         _controller = new Controller(_settings);
         _engine = new Engine(new ActivityMonitor([_signal], Grace), _controller, _journal,
-            _policy, _keepAwake, _power, _log, _clock);
+            _policy, _keepAwake, _power, _log, _clock, new EfficiencyCoordinator(_efficiency, _source, _settings, () => [], _log));
     }
 
     private string RecordPath => Path.Combine(_dir, "restore.json");
@@ -324,6 +327,110 @@ public sealed class EngineTests : IDisposable
         Assert.Contains(_log.Infos, line => line.StartsWith("[dry run]") && line.Contains("hibernate"));
         Assert.Contains(_log.Infos, line => line.StartsWith("[dry run]") && line.Contains("lock"));
         Assert.Contains(_log.Infos, line => line.StartsWith("[dry run]") && line.Contains("write power settings"));
+    }
+
+    /// <summary>An agent works, the lid is closed and nobody has touched the laptop for 10 minutes; Spotify is open.</summary>
+    private void AwayWithSpotifyOpen()
+    {
+        _source.Window(10, "spotify");
+        _signal.Busy = true;
+        _engine.Lid = LidState.Closed;
+        _power.IdleTime = TimeSpan.FromMinutes(10);
+        Tick();
+    }
+
+    [Fact]
+    public void Away_with_an_agent_working_puts_open_apps_into_efficiency_mode()
+    {
+        AwayWithSpotifyOpen();
+
+        Assert.Equal(["spotify"], _efficiency.Names);
+        Assert.Equal(1, _engine.Snapshot.EfficiencyApps);
+    }
+
+    [Fact]
+    public void When_the_work_ends_apps_come_out_before_the_power_settings_go_back()
+    {
+        AwayWithSpotifyOpen();
+        _signal.Busy = false;
+
+        Tick(afterMinutes: 6);
+
+        var restore = _calls.IndexOf("RestoreAll:work ended");
+        Assert.True(restore >= 0);
+        Assert.True(restore < _calls.LastIndexOf("Release"));
+        Assert.Empty(_efficiency.Names);
+    }
+
+    [Fact]
+    public void At_the_battery_floor_apps_come_out_before_hibernating()
+    {
+        AwayWithSpotifyOpen();
+        _power.Source = PowerSource.DC;
+        _power.BatteryPercent = 10;
+
+        Tick(afterMinutes: 1);
+
+        var restore = _calls.IndexOf("RestoreAll:battery floor or lid-closed limit");
+        Assert.True(restore >= 0);
+        Assert.True(restore < _calls.IndexOf("Hibernate"));
+    }
+
+    [Fact]
+    public void When_the_lid_opens_the_apps_come_out()
+    {
+        AwayWithSpotifyOpen();
+
+        _engine.Lid = LidState.Open;
+        Tick();
+
+        Assert.Equal(0, _engine.Snapshot.EfficiencyApps);
+        Assert.Contains("RestoreAll:lid opened", _calls);
+    }
+
+    /// <summary>Applies in memory and records a restore in the call list only when there was something to put back.</summary>
+    private sealed class FakeEfficiency(List<string> calls) : IEfficiencyMode
+    {
+        private readonly Dictionary<ProcessRef, string> _applied = [];
+
+        public List<string> Names => _applied.Values.ToList();
+        public int Generation { get; private set; }
+        public IReadOnlyCollection<ProcessRef> Applied => _applied.Keys.ToList();
+
+        public ApplyResult Apply(AppFamily family, int generation)
+        {
+            if (generation != Generation) return ApplyResult.Stale;
+            _applied[family.Root] = family.RootName;
+            return ApplyResult.Applied;
+        }
+
+        public void Restore(ProcessRef root, string reason) => _applied.Remove(root);
+
+        public int RestoreAll(string reason)
+        {
+            Generation++;
+            var apps = _applied.Count;
+            if (apps > 0) calls.Add("RestoreAll:" + reason);
+            _applied.Clear();
+            return apps;
+        }
+    }
+
+    private sealed class FakeSource : IEfficiencySource
+    {
+        private static readonly DateTime T0 = new(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc);
+        private readonly List<ProcessInfo> _processes = [new ProcessInfo(2, 1, "explorer", T0, 1)];
+        private readonly List<int> _windows = [];
+
+        public void Window(int pid, string name)
+        {
+            _processes.Add(new ProcessInfo(pid, 2, name, T0.AddHours(1), 1));
+            _windows.Add(pid);
+        }
+
+        public EfficiencySnapshot Take(IReadOnlyCollection<int> holderPids) => new(1, _processes, _windows, holderPids, []);
+
+        public string DisplayName(ProcessInfo root) => root.Name;
     }
 
     private sealed class FakeSignal : IBusySignal

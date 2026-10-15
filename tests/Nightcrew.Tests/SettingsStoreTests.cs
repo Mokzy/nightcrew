@@ -52,11 +52,17 @@ public sealed class SettingsStoreTests : IDisposable
     public void Save_then_load_round_trips()
     {
         var path = Path.Combine(_dir, "settings.json");
-        var settings = new Settings { GraceMinutes = 7, LockOnLidClose = false };
+        var settings = new Settings
+        {
+            GraceMinutes = 7, LockOnLidClose = false, LeaveAlone = ["olk"], LeaveAloneLabels = new() { ["olk"] = "Microsoft Outlook" },
+        };
         SettingsStore.Save(path, settings);
         var loaded = SettingsStore.Load(path);
         Assert.Equal(7, loaded.GraceMinutes);
         Assert.False(loaded.LockOnLidClose);
+        Assert.Equal(["olk"], loaded.LeaveAlone);
+        Assert.Equal("Microsoft Outlook", loaded.LeaveAloneLabels["olk"]);
+        Assert.Contains("\"LeaveAloneLabels\":{\"olk\":\"Microsoft Outlook\"}", File.ReadAllText(path));
         Assert.False(File.Exists(path + ".tmp"));
     }
 }
