@@ -168,7 +168,7 @@ Each rule has a name, which the log uses when it explains a decision.
    System Informer, PowerToys, Widgets, Phone Link, screen readers, IME
    hosts, and Nightcrew itself.
 8. **Your list** (`yours`): `LeaveAlone` in `settings.json`, by process name.
-   The panel adds to it with one click (section 6).
+   Settings adds to it with Keep at full speed (section 6).
 9. **Not allowed** (`denied`): a process Windows won't let Nightcrew change,
    such as apps running as admin or protected processes. The log notes this
    once per image per run.
