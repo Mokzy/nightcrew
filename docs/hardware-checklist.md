@@ -240,25 +240,7 @@ while ($true) { "{0:T} {1}" -f (Get-Date), (Get-Process notepad | Select-Object 
 
 `Idle` means Notepad is in Efficiency mode; `Normal` means it's back.
 
-## 9. Efficiency mode, dry run
-
-**Do.** Open Notepad and a browser without the Claude or Codex extension. Run
-`.\nightcrew.exe --dry-run` from the exe's folder. Plug the laptop in, start
-a long agent task with N = 2 and close the lid. After 10 minutes, open the lid
-and quit Nightcrew from the tray.
-
-**Look at.** The log.
-
-**Pass.**
-
-- About 5 minutes after you closed the lid, the log shows `[dry run] would put
-  into Efficiency mode:` lines for Notepad and the browser.
-- A `Left alone:` line names the agent's app or terminal (`agent`), any
-  browser with a connector (`connector`), and apps on the built-in lists.
-- When you open the lid, the log shows `[dry run] would end Efficiency mode
-  for` the same number of apps, with `lid opened`.
-
-## 10. Efficiency mode on and off
+## 9. Efficiency mode on and off
 
 **Do.** Start Nightcrew normally and start the priority log. Plug the laptop
 in, start a long agent task with N = 2 and close the lid. After 15 minutes,
@@ -277,7 +259,7 @@ open the lid and open the panel.
   Always leave alone; the × takes it off again.
 - `%LOCALAPPDATA%\Nightcrew\efficiency.json` is gone.
 
-## 11. Efficiency mode after a crash
+## 10. Efficiency mode after a crash
 
 **Do.** Start Nightcrew normally and start the priority log. In a second
 terminal, run `Start-Sleep -Seconds 600; Stop-Process -Name nightcrew`, which
@@ -296,7 +278,7 @@ afterwards.
   more were open).
 - `efficiency.json` is gone.
 
-## 12. Uninstall
+## 11. Uninstall
 
 **Do.** Start Nightcrew normally. Start an agent task and wait until the
 settings check shows `0x00000000`. In Task Manager, end `nightcrew.exe`.

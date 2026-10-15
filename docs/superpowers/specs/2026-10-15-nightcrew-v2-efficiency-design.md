@@ -275,8 +275,13 @@ changed processes with their family, and the record.
 
 ### 5.5 Dry run
 
-`DryRunEfficiency` logs the same plan with "would" and changes nothing. The
-first run on the owner's laptop is a dry run.
+`DryRunEfficiency` logs the same plan with "would" and changes nothing. A dry
+run can't reach Efficiency mode on a laptop, though: it doesn't hold the
+laptop awake, so closing the lid sleeps it (and with the lid action set to Do
+nothing, the gate rightly stays shut). So the first look on the owner's laptop
+is a read-only preview of the plan instead. On 15 October it listed Outlook,
+Wispr Flow and WhatsApp, left Brave, Chrome, ChatGPT, Claude and File Explorer
+alone, and found no empty families. The real run in checklist step 9 follows.
 
 ## 6. What you see
 
@@ -394,12 +399,11 @@ The built-in lists are constants in code, not settings.
      before Hibernate
    - the "while you were away" list reaches the snapshot
 4. **On the owner's laptop:**
-   - a dry run first, reading the log's "Would put into Efficiency mode" and
-     "Left alone" lines
-   - then three new steps in `docs/hardware-checklist.md`:
-     - **On:** close the lid with apps open while an agent works. After 5
-       minutes, Task Manager's Status column shows the leaf icon for them.
-     - **Off:** open the lid; the leaf is gone within a second.
+   - a read-only preview of the plan first (section 5.5)
+   - then two new steps in `docs/hardware-checklist.md`:
+     - **On and off:** close the lid with apps open while an agent works. After 5
+       minutes, Task Manager's Status column shows the leaf icon for them;
+       open the lid and the leaf is gone within a second.
      - **Crash:** kill Nightcrew while apps are in Efficiency mode; within 5
        minutes the watchdog puts them back.
 5. **Resources:** the same before-and-after measurement as v0.1.1, idle and
@@ -422,8 +426,8 @@ build order puts that code first, where a block is cheap:
 
 ## 11. Release
 
-v0.2.0 is tagged after the owner's dry run and the three new checklist steps
-pass. The release notes say Efficiency mode while away is new, on by default,
+v0.2.0 is tagged after the read-only preview and the two new checklist steps
+(9 and 10) pass. The release notes say Efficiency mode while away is new, on by default,
 and can be switched off in Settings.
 
 ## 12. Out of scope for v2
