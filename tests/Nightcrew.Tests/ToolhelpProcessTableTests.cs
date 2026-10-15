@@ -47,11 +47,16 @@ public sealed class ToolhelpProcessTableTests
         {
             Assert.True(_table.TryGetTimes(child.Id, out _, out _));
 
-            var timer = Stopwatch.StartNew();
-            for (var i = 0; i < 200; i++) _table.TryGetTimes(child.Id, out _, out _);
-
-            // A direct read takes about 15 microseconds; the Process class takes about 180, because it walks the process list first.
-            Assert.InRange(timer.ElapsedMilliseconds, 0, 15);
+            // A direct read takes about 15 microseconds; the Process class takes about 180, because it walks the process
+            // list first. The fastest of five batches is used, so a scheduler hiccup or GC pause in one batch can't fail it.
+            var fastest = long.MaxValue;
+            for (var batch = 0; batch < 5; batch++)
+            {
+                var timer = Stopwatch.StartNew();
+                for (var i = 0; i < 200; i++) _table.TryGetTimes(child.Id, out _, out _);
+                fastest = Math.Min(fastest, timer.ElapsedMilliseconds);
+            }
+            Assert.InRange(fastest, 0, 15);
         }
         finally
         {
