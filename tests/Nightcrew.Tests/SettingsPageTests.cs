@@ -25,6 +25,7 @@ public sealed class SettingsPageTests
             "Battery floor", "10%", "15%", "20%", "30%", "Off",
             "Lid-closed limit", "2 h", "4 h", "8 h", "12 h", "Off",
             "Lock when lid closes", "Start at login", "Efficiency mode while away",
+            "Keep at full speed", "+ Add an app",
             "Tray mark", "Lantern", "Moon and star",
             "Open log", "Quit Nightcrew",
         ], texts);
@@ -78,35 +79,75 @@ public sealed class SettingsPageTests
     }
 
     [Fact]
-    public void The_efficiency_switch_and_each_cross_report_back()
+    public void The_efficiency_switch_each_cross_and_add_an_app_report_back()
     {
-        var page = SettingsModel.From(new Settings { LeaveAlone = ["whatsapp.root", "olk"] });
+        var page = SettingsModel.From(Kept());
         var calls = Sta.Run(() =>
         {
             var calls = new List<string>();
             var root = PanelVisual.BuildSettings(page, Actions() with
             {
                 EfficiencyWhileAway = on => calls.Add($"efficiency {on}"),
-                RemoveLeaveAlone = name => calls.Add($"remove {name}"),
+                RemoveFullSpeed = name => calls.Add($"remove {name}"),
+                ToggleAddList = () => calls.Add("add list"),
             });
             Click(Named<FrameworkElement>(root, "Efficiency mode while away"));
-            Click(Named<FrameworkElement>(root, "Remove olk"));
+            Click(Named<FrameworkElement>(root, "Remove Microsoft Outlook"));
+            Click(Named<FrameworkElement>(root, "Add an app"));
             return calls;
         });
 
-        Assert.Equal(["efficiency False", "remove olk"], calls);
+        Assert.Equal(["efficiency False", "remove olk", "add list"], calls);
     }
 
     [Fact]
-    public void The_always_leave_alone_list_shows_only_when_it_has_apps()
+    public void Apps_kept_at_full_speed_sit_under_the_efficiency_switch_then_add_an_app()
     {
-        var (empty, listed) = Sta.Run(() => (
-            Texts(PanelVisual.BuildSettings(Defaults, null)),
-            Texts(PanelVisual.BuildSettings(SettingsModel.From(new Settings { LeaveAlone = ["whatsapp.root", "olk"] }), null))));
+        var texts = Sta.Run(() => Texts(PanelVisual.BuildSettings(SettingsModel.From(Kept()), null)));
 
-        Assert.DoesNotContain("Always leave alone", empty);
-        var at = listed.IndexOf("Always leave alone");
-        Assert.Equal(["Always leave alone", "olk", "×", "whatsapp.root", "×"], listed.Skip(at).Take(5));
+        var at = texts.IndexOf("Efficiency mode while away");
+        Assert.Equal(["Efficiency mode while away", "Keep at full speed", "Microsoft Outlook", "×", "WhatsApp", "×", "+ Add an app", "Tray mark"],
+            texts.Skip(at).Take(8));
+    }
+
+    [Fact]
+    public void With_efficiency_mode_off_the_full_speed_list_is_hidden()
+    {
+        var page = SettingsModel.From(Kept()) with { EfficiencyWhileAway = false };
+
+        var texts = Sta.Run(() => Texts(PanelVisual.BuildSettings(page, null)));
+
+        Assert.DoesNotContain("Keep at full speed", texts);
+        Assert.DoesNotContain("+ Add an app", texts);
+        Assert.DoesNotContain("Microsoft Outlook", texts);
+    }
+
+    [Fact]
+    public void Add_an_app_opens_the_apps_nightcrew_would_slow_and_each_reports_back()
+    {
+        var page = SettingsModel.From(new Settings(), [new NamedApp("Spotify", "spotify"), new NamedApp("Discord", "discord")]);
+        var (texts, calls) = Sta.Run(() =>
+        {
+            var calls = new List<string>();
+            var root = PanelVisual.BuildSettings(page, Actions() with { AddFullSpeed = app => calls.Add($"add {app.RootName}") });
+            Click(Named<FrameworkElement>(root, "Add Spotify"));
+            return (Texts(root), calls);
+        });
+
+        var at = texts.IndexOf("+ Add an app");
+        Assert.Equal(["+ Add an app", "Discord", "Spotify", "Tray mark"], texts.Skip(at).Take(4));
+        Assert.Equal(["add spotify"], calls);
+    }
+
+    [Fact]
+    public void With_nothing_to_add_the_list_says_so()
+    {
+        var page = SettingsModel.From(new Settings(), []);
+
+        var texts = Sta.Run(() => Texts(PanelVisual.BuildSettings(page, null)));
+
+        var at = texts.IndexOf("+ Add an app");
+        Assert.Equal(["+ Add an app", "Nothing to add right now", "Tray mark"], texts.Skip(at).Take(3));
     }
 
     [Fact]
@@ -142,6 +183,12 @@ public sealed class SettingsPageTests
 
     private static SettingsActions Actions() =>
         new(() => { }, _ => { }, _ => { }, _ => { }, _ => { }, _ => { }, () => { }, () => { });
+
+    private static Settings Kept() => new()
+    {
+        LeaveAlone = ["whatsapp.root", "olk"],
+        LeaveAloneLabels = new() { ["olk"] = "Microsoft Outlook", ["whatsapp.root"] = "WhatsApp" },
+    };
 
     private static Color Fill(Border border) => ((SolidColorBrush)border.Background).Color;
 

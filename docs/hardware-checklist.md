@@ -246,17 +246,18 @@ while ($true) { "{0:T} {1}" -f (Get-Date), (Get-Process notepad | Select-Object 
 in, start a long agent task with N = 2 and close the lid. After 15 minutes,
 open the lid and open the panel.
 
-**Look at.** The priority log, the log and the panel.
+**Look at.** The priority log, the log and the settings page.
 
 **Pass.**
 
 - About 5 minutes after you closed the lid, the priority log turns `Idle` and
-  the log shows `Efficiency mode on: Notepad (notepad, 1 process)`.
+  the log shows `Efficiency mode on:` with `Notepad.exe (notepad, 1 process)`
+  among the apps.
 - The log shows `Efficiency mode off for` some apps with `lid opened` at the
   moment you opened the lid, and the next priority log line says `Normal`.
-- The panel lists Notepad under "In Efficiency mode while you were away".
-  Turning on its **Leave alone** switch adds `notepad` under Settings >
-  Always leave alone; the × takes it off again.
+- The main panel shows no list of apps. In Settings, **+ Add an app** under
+  **Keep at full speed** lists `Notepad.exe` among the apps Nightcrew would
+  slow; clicking it moves it onto the list, and its × takes it off again.
 - `%LOCALAPPDATA%\Nightcrew\efficiency.json` is gone.
 
 ## 10. Efficiency mode after a crash

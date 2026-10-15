@@ -288,19 +288,21 @@ alone, and found no empty families. The real run in checklist step 9 follows.
 **Settings page:**
 
 - **Efficiency mode while away:** a switch, on by default.
-- **Always leave alone:** the apps on the user's list, each with a × to take
-  it off. When the list is empty, the row doesn't appear.
-
-**Panel, after the lid opens:**
-
-- A short section, **"In Efficiency mode while you were away"**, lists the
-  apps from the most recent time away by display name. Each has a **Leave
-  alone** switch that adds the process name of the app's family root to
-  `LeaveAlone`; turning the switch off again takes it back off.
-- The section appears only while the lid is open and that time away has
-  ended. It clears when the next one starts.
+- **Keep at full speed**, under the switch and only while it's on: the apps
+  on the user's list by display name, each with a × to take it off, then
+  **+ Add an app**.
+- **+ Add an app** opens a short list of the apps Nightcrew would slow right
+  now (the plan from section 4, minus the user's list), by display name.
+  Clicking one adds the process name of the app's family root to
+  `LeaveAlone`, remembers its display name in `LeaveAloneLabels`, and closes
+  the list. With nothing to add, the list says "Nothing to add right now".
 - As on the rest of the settings page, there are no explanations under the
   new settings.
+
+**The main panel doesn't change.** An earlier build listed the apps from the
+last time away on the main panel, each with a Leave alone switch; on the
+owner's laptop that read as confusing. Most people never need the list, so it
+lives in Settings for the few who see an app misbehave after being away.
 
 **Log:**
 
@@ -325,6 +327,7 @@ New keys in `settings.json`; every key you leave out keeps its default:
 |---|---|---|
 | `EfficiencyWhileAway` | true | Put apps the agents don't need into Efficiency mode while you're away |
 | `LeaveAlone` | `[]` | Process names that are never put into Efficiency mode |
+| `LeaveAloneLabels` | `{}` | The name Settings shows for each of them, by process name; without one, Settings shows the process name |
 | `ConnectorHostNames` | `chrome-native-host`, `extension-host` | Browser connector helpers; their browser is left alone |
 
 The built-in lists are constants in code, not settings.
@@ -339,7 +342,7 @@ The built-in lists are constants in code, not settings.
 | `Core/LeaveAloneRules` | data | The built-in lists from 3.3 |
 | `Core/EfficiencyPlanner` | pure | Snapshot in, plan out (sections 3–4) |
 | `Core/EfficiencyRecord` | data | The record from 5.3 and its JSON |
-| `Core/EfficiencyCoordinator` | logic | Each tick, builds the snapshot, asks the gate and planner, and drives Efficiency mode. It also keeps the "while you were away" list. |
+| `Core/EfficiencyCoordinator` | logic | Each tick, builds the snapshot, asks the gate and planner, and drives Efficiency mode. It also lists the apps it would slow now, for Settings' Add an app. |
 | `Platform/EfficiencyMode` | Windows | Section 5: `Apply`, `Restore`, `RestoreAll`; its constructor loads what a crashed run left in the record, so `RestoreAll` puts that back too |
 | `Platform/DryRunEfficiency` | Windows | Section 5.5 |
 | `Platform/WindowOwners` | Windows | The candidate pids from 3.1 |
@@ -350,8 +353,7 @@ The built-in lists are constants in code, not settings.
 
 - `Engine.Tick` calls the coordinator after the controller step. In `Run`,
   Disarm and Hibernate call `RestoreAll` first.
-- `EngineSnapshot` adds the Efficiency mode state (off, ready, on with a
-  count) and the last time away's apps.
+- `EngineSnapshot` adds the number of apps in Efficiency mode.
 - In `TrayApp`, the lid, suspend and end-session callbacks call `RestoreAll`
   first; Pause and Quit do too. A 1-second input timer runs only while apps
   are in Efficiency mode.
@@ -360,8 +362,9 @@ The built-in lists are constants in code, not settings.
 - `Watchdog.Run` also restores leftovers from `efficiency.json`.
 - `AppPaths` gains `EfficiencyFile`.
 - `GpuSignal` reports its busy pids.
-- `Settings`, `SettingsModel`, `PanelModel` and `PanelVisual` gain the switch,
-  the list and the "while you were away" section.
+- `Settings`, `SettingsModel` and `PanelVisual` gain the switch and the
+  Keep at full speed list. `TrayApp` fills Add an app from the coordinator,
+  under the lock.
 
 **Threading:**
 
@@ -393,11 +396,11 @@ The built-in lists are constants in code, not settings.
      - family integrity (one left-alone member keeps the whole family)
      - orphans grouped by image, but never for shared runtimes
      - reused pids rejected by start times
-   - the strings in `PanelModel` and `SettingsModel`
+   - the strings in `SettingsModel`, and the Keep at full speed list on the
+     settings page
 3. **The engine with a fake `EfficiencyMode`:**
    - `RestoreAll` happens before Disarm restores the power settings, and
      before Hibernate
-   - the "while you were away" list reaches the snapshot
 4. **On the owner's laptop:**
    - a read-only preview of the plan first (section 5.5)
    - then two new steps in `docs/hardware-checklist.md`:

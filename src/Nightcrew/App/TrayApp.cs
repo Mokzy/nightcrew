@@ -30,22 +30,27 @@ public sealed class TrayApp : ApplicationContext
     private readonly bool _watchdogMissing;
     private readonly IEfficiencyMode _efficiency;
     private readonly Func<TimeSpan> _idleTime;
+    private readonly Func<IReadOnlyList<NamedApp>> _wouldSlowNow;
     private readonly System.Threading.Timer _inputTimer;
     private static readonly TimeSpan InputCheck = TimeSpan.FromSeconds(1);
     private EngineSnapshot _snapshot = EngineSnapshot.Initial; // UI thread
     private PanelView? _view; // UI thread
+    private IReadOnlyList<NamedApp>? _addable; // UI thread: the open Add an app list, or null
     private bool _closed;
     private bool _sessionEnding;
 
     /// <summary>
     /// Subscribes to <paramref name="events"/> but does not own it; the caller disposes it after this. <paramref name="efficiency"/>
     /// is called directly, without the lock, whenever apps must come out of Efficiency mode at once.
+    /// <paramref name="wouldSlowNow"/> fills Settings' Add an app list and is called under the lock.
     /// </summary>
     public TrayApp(Settings settings, bool dryRun, string exePath, PowerEventsWindow events,
-        ActivityMonitor activity, Controller controller, Engine engine, ILog log, IEfficiencyMode efficiency, Func<TimeSpan> idleTime)
+        ActivityMonitor activity, Controller controller, Engine engine, ILog log, IEfficiencyMode efficiency, Func<TimeSpan> idleTime,
+        Func<IReadOnlyList<NamedApp>> wouldSlowNow)
     {
         _efficiency = efficiency;
         _idleTime = idleTime;
+        _wouldSlowNow = wouldSlowNow;
         _inputTimer = new System.Threading.Timer(_ => CheckInput(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _settings = settings;
         _dryRun = dryRun;
@@ -60,10 +65,9 @@ public sealed class TrayApp : ApplicationContext
             new PanelActions(
                 Hold: () => SetHold(!_snapshot.Hold),
                 Pause: () => SetPaused(!_snapshot.Paused),
-                Settings: () => _panel!.ShowPage(settings: true),
-                LeaveAlone: SetLeaveAlone),
+                Settings: () => ShowPage(settings: true)),
             new SettingsActions(
-                Back: () => _panel!.ShowPage(settings: false),
+                Back: () => ShowPage(settings: false),
                 BatteryFloor: value => ChangeSetting("Battery floor", () => _settings.BatteryFloorPercent = value),
                 LidClosedLimit: value => ChangeSetting("Lid-closed limit", () => _settings.LidClosedCapHours = value),
                 LockOnLidClose: on => ChangeSetting("Lock when lid closes", () => _settings.LockOnLidClose = on),
@@ -71,8 +75,14 @@ public sealed class TrayApp : ApplicationContext
                 Mark: kind => ChangeSetting("Tray mark", () => _settings.Mark = MarkKinds.Name(kind)),
                 OpenLog: OpenLog,
                 Quit: Quit,
-                EfficiencyWhileAway: on => ChangeSetting("Efficiency mode while away", () => _settings.EfficiencyWhileAway = on),
-                RemoveLeaveAlone: name => SetLeaveAlone(name, false)));
+                EfficiencyWhileAway: on =>
+                {
+                    _addable = null;
+                    ChangeSetting("Efficiency mode while away", () => _settings.EfficiencyWhileAway = on);
+                },
+                ToggleAddList: ToggleAddList,
+                AddFullSpeed: app => SetFullSpeed(app.RootName, app.DisplayName),
+                RemoveFullSpeed: name => SetFullSpeed(name, null)));
         UiSafety.Install(_panel.Dispatcher, log);
 
         if (!dryRun)
@@ -160,7 +170,7 @@ public sealed class TrayApp : ApplicationContext
         try
         {
             _snapshot = snapshot;
-            var view = PanelModel.From(snapshot, _settings.BatteryFloorPercent, _watchdogMissing, _settings.LeaveAlone);
+            var view = PanelModel.From(snapshot, _settings.BatteryFloorPercent, _watchdogMissing);
             _view = view;
             var tooltip = _dryRun ? "[dry run] " + view.Tooltip : view.Tooltip;
             _tray.Text = tooltip.Length > PanelModel.TooltipLimit ? tooltip.Substring(0, PanelModel.TooltipLimit) : tooltip;
@@ -177,7 +187,31 @@ public sealed class TrayApp : ApplicationContext
 
     private void RenderPanel()
     {
-        if (_view is not null) _panel.Render(_view, SettingsModel.From(_settings), Mark);
+        if (_view is not null) _panel.Render(_view, SettingsModel.From(_settings, _addable), Mark);
+    }
+
+    /// <summary>Switches page, with the Add an app list closed.</summary>
+    private void ShowPage(bool settings)
+    {
+        _addable = null;
+        _panel.ShowPage(settings);
+        RenderPanel();
+    }
+
+    /// <summary>Opens the Add an app list with the apps Nightcrew would slow right now, or closes it.</summary>
+    private void ToggleAddList()
+    {
+        if (_addable is null)
+        {
+            IReadOnlyList<NamedApp> apps = [];
+            Guarded("Add an app", () => apps = _wouldSlowNow());
+            _addable = apps;
+        }
+        else
+        {
+            _addable = null;
+        }
+        RenderPanel();
     }
 
     /// <summary>
@@ -197,11 +231,10 @@ public sealed class TrayApp : ApplicationContext
                     _panel.HidePanel();
                     break;
                 case PanelClick.SwitchPage:
-                    _panel.ShowPage(settings);
+                    ShowPage(settings);
                     break;
                 case PanelClick.Open:
-                    _panel.ShowPage(settings);
-                    RenderPanel();
+                    ShowPage(settings);
                     _panel.ShowNear(Cursor.Position);
                     break;
             }
@@ -248,13 +281,27 @@ public sealed class TrayApp : ApplicationContext
         Apply("Pause", () => _engine.Paused = on);
     }
 
-    /// <summary>Adds the app's root process name to the Always leave alone list, or takes it off.</summary>
-    private void SetLeaveAlone(string rootName, bool on) => ChangeSetting("Leave alone", () =>
+    /// <summary>
+    /// Keeps an app at full speed under the name Settings shows, or with no <paramref name="label"/> takes it off the
+    /// list. Closes the Add an app list.
+    /// </summary>
+    private void SetFullSpeed(string rootName, string? label)
     {
-        var names = _settings.LeaveAlone.Where(name => !string.Equals(name, rootName, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (on) names.Add(rootName);
-        _settings.LeaveAlone = names.ToArray();
-    });
+        _addable = null;
+        ChangeSetting("Keep at full speed", () =>
+        {
+            bool Same(string name) => string.Equals(name, rootName, StringComparison.OrdinalIgnoreCase);
+            var names = _settings.LeaveAlone.Where(name => !Same(name)).ToList();
+            var labels = (_settings.LeaveAloneLabels ?? []).Where(pair => !Same(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            if (label is not null)
+            {
+                names.Add(rootName);
+                labels[rootName] = label;
+            }
+            _settings.LeaveAlone = names.ToArray();
+            _settings.LeaveAloneLabels = labels;
+        });
+    }
 
     /// <summary>Timer thread, every second while apps are in Efficiency mode: any input brings them back at once.</summary>
     private void CheckInput()

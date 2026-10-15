@@ -10,9 +10,6 @@ public enum MarkState { Idle, Live }
 
 public sealed record PanelFact(string Label, string Value);
 
-/// <summary>An app from the most recent time away, and whether it's on the Always leave alone list.</summary>
-public sealed record AwayRow(string DisplayName, string RootName, bool LeftAlone);
-
 /// <summary>Everything the click panel and the tray tooltip show, as plain strings.</summary>
 public sealed record PanelView(
     PanelState State,
@@ -25,26 +22,14 @@ public sealed record PanelView(
     string PauseLabel,
     string? Warning,
     MarkState Mark,
-    string Tooltip,
-    IReadOnlyList<AwayRow>? Away = null);
+    string Tooltip);
 
 /// <summary>Turns an engine snapshot into the panel's words. Pure, so every string is unit-tested.</summary>
 public static class PanelModel
 {
     public const int TooltipLimit = 63;
 
-    /// <param name="leaveAlone">The Always leave alone list, to show which apps from the time away are on it.</param>
-    public static PanelView From(EngineSnapshot snapshot, int batteryFloorPercent, bool watchdogMissing = false,
-        IReadOnlyCollection<string>? leaveAlone = null)
-    {
-        var view = MainPage(snapshot, batteryFloorPercent, watchdogMissing);
-        // Once you're back: the lid is open and the time away has ended.
-        if (snapshot.Lid == LidState.Closed || snapshot.Away is not { Count: > 0 } away) return view;
-        var kept = new HashSet<string>(leaveAlone ?? [], StringComparer.OrdinalIgnoreCase);
-        return view with { Away = away.Select(app => new AwayRow(app.DisplayName, app.RootName, kept.Contains(app.RootName))).ToList() };
-    }
-
-    private static PanelView MainPage(EngineSnapshot snapshot, int batteryFloorPercent, bool watchdogMissing)
+    public static PanelView From(EngineSnapshot snapshot, int batteryFloorPercent, bool watchdogMissing = false)
     {
         var warning = WarningText(snapshot.Warning, watchdogMissing);
         var battery = new PanelFact("Battery", Battery(snapshot, batteryFloorPercent));

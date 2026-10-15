@@ -74,10 +74,10 @@ what happens when the work is done.
   Nightcrew can't detect on its own.
 - **Pause** hands the lid back to Windows until you resume.
 - **Settings**, or right-click the lantern: battery floor, lid-closed limit,
-  lock on lid close, start at login, Efficiency mode while away, the apps to
-  always leave alone, and the tray mark.
-- After you've been away, the panel lists the apps that were in Efficiency
-  mode. Switch on **Leave alone** for any that should keep full speed.
+  lock on lid close, start at login, Efficiency mode while away, and the tray
+  mark.
+- If an app keeps misbehaving after you've been away, add it under **Keep at
+  full speed** in Settings.
 
 <br clear="right">
 
@@ -125,7 +125,7 @@ anything, run `nightcrew --dry-run` and read the log.
 | `SampleSeconds` | 10 | Seconds between checks |
 | `Mark` | `lantern` | The tray mark: `lantern` or `moon` |
 | `EfficiencyWhileAway` | true | Put apps the agents don't need into Efficiency mode while you're away |
-| `LeaveAlone` | none | Process names never put into Efficiency mode |
+| `LeaveAlone` | none | Process names never put into Efficiency mode (Settings > Keep at full speed) |
 | `ConnectorHostNames` | `chrome-native-host`, `extension-host` | Browser connector helpers; their browser is left alone |
 
 </details>

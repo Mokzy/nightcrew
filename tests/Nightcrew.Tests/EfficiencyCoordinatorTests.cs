@@ -30,7 +30,7 @@ public sealed class EfficiencyCoordinatorTests
     }
 
     [Fact]
-    public void Away_puts_each_planned_app_into_efficiency_mode_and_lists_it()
+    public void Away_puts_each_planned_app_into_efficiency_mode()
     {
         App(10, "spotify");
         App(20, "olk");
@@ -40,7 +40,21 @@ public sealed class EfficiencyCoordinatorTests
         Assert.Equal(["spotify", "olk"], _efficiency.AppliedNames);
         Assert.True(_coordinator.Active);
         Assert.Equal(2, _coordinator.AppCount);
-        Assert.Equal([new AwayApp("Spotify!", "spotify"), new AwayApp("Olk!", "olk")], _coordinator.Away);
+    }
+
+    [Fact]
+    public void Would_slow_now_lists_the_planned_apps_by_name_without_changing_any()
+    {
+        App(10, "spotify");
+        App(20, "olk");
+        App(30, "discord");
+        _settings.LeaveAlone = ["DISCORD"];
+
+        var apps = _coordinator.WouldSlowNow();
+
+        Assert.Equal([new NamedApp("Olk!", "olk"), new NamedApp("Spotify!", "spotify")], apps);
+        Assert.Empty(_efficiency.Calls);
+        Assert.False(_coordinator.Active);
     }
 
     [Fact]
@@ -138,7 +152,7 @@ public sealed class EfficiencyCoordinatorTests
         StepAway();
 
         Assert.Equal(["spotify", "olk"], _efficiency.AppliedNames);
-        Assert.Equal(2, _coordinator.Away.Count);
+        Assert.Equal(2, _coordinator.AppCount);
     }
 
     [Fact]
@@ -151,7 +165,7 @@ public sealed class EfficiencyCoordinatorTests
         StepAway();
 
         Assert.Single(_log.Infos, line => line == "Can't change steamvr: access denied");
-        Assert.Empty(_coordinator.Away);
+        Assert.Equal(0, _coordinator.AppCount);
     }
 
     [Fact]
@@ -178,20 +192,6 @@ public sealed class EfficiencyCoordinatorTests
 
         Assert.Equal(["Left alone: code (category)", "Left alone: code (category), steam (game)"],
             _log.Infos.Where(line => line.StartsWith("Left alone")));
-    }
-
-    [Fact]
-    public void The_away_list_starts_over_the_next_time_away()
-    {
-        App(10, "spotify");
-        StepAway();
-        _coordinator.Step(Mode.Armed, LidState.Open, Away, LidAction.Sleep);
-        Assert.Single(_coordinator.Away);
-
-        _source.Windows.Remove(10);
-        StepAway();
-
-        Assert.Empty(_coordinator.Away);
     }
 
     [Fact]

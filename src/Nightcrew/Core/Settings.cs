@@ -25,6 +25,10 @@ public sealed class Settings
     [DataMember] public string Mark { get; set; } = MarkKinds.LanternName;
     [DataMember] public bool EfficiencyWhileAway { get; set; }
     [DataMember] public string[] LeaveAlone { get; set; } = [];
+
+    /// <summary>The name Settings shows for each app on <see cref="LeaveAlone"/>, by process name.</summary>
+    [DataMember] public Dictionary<string, string> LeaveAloneLabels { get; set; } = [];
+
     [DataMember] public string[] ConnectorHostNames { get; set; } = [];
 
     [OnDeserializing]
@@ -50,6 +54,7 @@ public sealed class Settings
         Mark = MarkKinds.LanternName;
         EfficiencyWhileAway = true;
         LeaveAlone = [];
+        LeaveAloneLabels = [];
         ConnectorHostNames = ["chrome-native-host", "extension-host"];
     }
 }

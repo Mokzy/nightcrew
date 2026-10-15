@@ -124,37 +124,6 @@ public sealed class PanelVisualTests : IDisposable
     }
 
     [Fact]
-    public void The_apps_from_the_time_away_sit_between_the_holders_and_the_facts_and_each_switch_reports_back()
-    {
-        var view = View("quiet") with { Away = [new AwayRow("Microsoft Outlook", "olk", false), new AwayRow("WhatsApp", "whatsapp.root", true)] };
-        var (texts, calls) = Sta.Run(() =>
-        {
-            var calls = new List<string>();
-            var root = PanelVisual.Build(view, MarkKind.Lantern,
-                new PanelActions(() => { }, () => { }, () => { }, (name, on) => calls.Add($"{name} {on}")));
-            foreach (var app in new[] { "Microsoft Outlook", "WhatsApp" })
-            {
-                var row = Find<Border>(root, border => System.Windows.Automation.AutomationProperties.GetName(border) == app);
-                row.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
-            }
-            return (Texts(root), calls);
-        });
-
-        var offTrack = Sta.Run(() =>
-        {
-            var row = Find<Border>(PanelVisual.Build(view, MarkKind.Lantern, null), border => System.Windows.Automation.AutomationProperties.GetName(border) == "Microsoft Outlook");
-            var track = (Border)((DockPanel)row.Child).Children[0];
-            return ((SolidColorBrush)track.Background).Color;
-        });
-        Assert.NotEqual(Theme.NightRaised, offTrack); // the card's own colour would hide an off switch
-
-        var at = texts.IndexOf("In Efficiency mode while you were away");
-        Assert.Equal(["In Efficiency mode while you were away", "Leave alone", "Microsoft Outlook", "WhatsApp", "Battery"],
-            texts.Skip(at).Take(5));
-        Assert.Equal(["olk True", "whatsapp.root False"], calls);
-    }
-
-    [Fact]
     public void The_readme_renders_write_the_three_panels_and_settings_at_twice_the_size()
     {
         var paths = Sta.Run(() => AssetRenderer.WritePanels(_dir));

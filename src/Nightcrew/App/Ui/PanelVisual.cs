@@ -10,16 +10,17 @@ using Nightcrew.Core;
 
 namespace Nightcrew.App.Ui;
 
-/// <summary>
-/// What the panel's controls do. Null when the panel is only drawn, as for the README. <paramref name="LeaveAlone"/> gets an
-/// app's root process name and whether it should now be left alone.
-/// </summary>
-public sealed record PanelActions(Action Hold, Action Pause, Action Settings, Action<string, bool>? LeaveAlone = null);
+/// <summary>What the panel's controls do. Null when the panel is only drawn, as for the README.</summary>
+public sealed record PanelActions(Action Hold, Action Pause, Action Settings);
 
-/// <summary>What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.</summary>
+/// <summary>
+/// What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.
+/// <paramref name="ToggleAddList"/> opens or closes the Add an app list; <paramref name="RemoveFullSpeed"/> gets a process name.
+/// </summary>
 public sealed record SettingsActions(Action Back, Action<int> BatteryFloor, Action<int> LidClosedLimit,
     Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit,
-    Action<bool>? EfficiencyWhileAway = null, Action<string>? RemoveLeaveAlone = null);
+    Action<bool>? EfficiencyWhileAway = null, Action? ToggleAddList = null, Action<NamedApp>? AddFullSpeed = null,
+    Action<string>? RemoveFullSpeed = null);
 
 /// <summary>Builds the click panel from a <see cref="PanelView"/>. The same tree is shown in the window and rendered for the README.</summary>
 public static class PanelVisual
@@ -39,7 +40,6 @@ public static class PanelVisual
         body.Children.Add(Headline(view));
         body.Children.Add(Text(view.SubLine, 12.5, Theme.MoonMuted, bottom: 16, lineHeight: 18));
         if (view.Holders.Count > 0) body.Children.Add(Holders(view.Holders));
-        if (view.Away is { Count: > 0 } away) body.Children.Add(AwayCard(away, actions?.LeaveAlone));
         body.Children.Add(Facts(view.Facts));
         body.Children.Add(Buttons(view, actions));
         if (view.Warning is { } warning) body.Children.Add(WarningRow(warning));
@@ -61,12 +61,7 @@ public static class PanelVisual
         body.Children.Add(SwitchRow("Lock when lid closes", page.LockOnLidClose, actions?.LockOnLidClose, bottom: 12));
         body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 12));
         body.Children.Add(SwitchRow("Efficiency mode while away", page.EfficiencyWhileAway, actions?.EfficiencyWhileAway, bottom: 0));
-        if (page.LeaveAlone is { Count: > 0 } kept)
-        {
-            body.Children.Add(Hairline());
-            body.Children.Add(Text("Always leave alone", 12.5, Theme.Moon, bottom: 4));
-            foreach (var name in kept) body.Children.Add(KeptRow(name, actions?.RemoveLeaveAlone));
-        }
+        if (page.EfficiencyWhileAway) body.Children.Add(FullSpeed(page, actions));
         body.Children.Add(Hairline());
         body.Children.Add(Text("Tray mark", 12.5, Theme.Moon));
         body.Children.Add(Segments("Tray mark", page.Mark, actions?.Mark));
@@ -153,11 +148,8 @@ public static class PanelVisual
         };
     }
 
-    /// <summary>
-    /// A label with an on/off switch; clicking anywhere on the row flips it. On a raised card, pass a lighter
-    /// <paramref name="offTrack"/> so an off switch's track still shows.
-    /// </summary>
-    private static Border SwitchRow(string label, bool on, Action<bool>? set, double bottom, Color? offTrack = null)
+    /// <summary>A label with an on/off switch; clicking anywhere on the row flips it.</summary>
+    private static Border SwitchRow(string label, bool on, Action<bool>? set, double bottom)
     {
         var knob = new System.Windows.Shapes.Ellipse
         {
@@ -168,7 +160,7 @@ public static class PanelVisual
             HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var track = new Border { Width = 30, Height = 18, CornerRadius = new CornerRadius(9), Background = Theme.Brush(on ? Theme.Lavender : offTrack ?? Theme.NightRaised), Child = knob };
+        var track = new Border { Width = 30, Height = 18, CornerRadius = new CornerRadius(9), Background = Theme.Brush(on ? Theme.Lavender : Theme.NightRaised), Child = knob };
         var dock = new DockPanel();
         DockPanel.SetDock(track, Dock.Right);
         dock.Children.Add(track);
@@ -238,46 +230,72 @@ public static class PanelVisual
         };
     }
 
-    /// <summary>The apps from the most recent time away, each with a Leave alone switch.</summary>
-    private static Border AwayCard(IReadOnlyList<AwayRow> apps, Action<string, bool>? leaveAlone)
+    /// <summary>
+    /// Under the Efficiency mode switch: the apps you keep at full speed, then Add an app, which opens the apps
+    /// Nightcrew would slow right now.
+    /// </summary>
+    private static StackPanel FullSpeed(SettingsPage page, SettingsActions? actions)
+    {
+        var section = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        section.Children.Add(Text("Keep at full speed", 11, Theme.MoonFaint, bottom: 2));
+        foreach (var app in page.FullSpeed ?? []) section.Children.Add(KeptRow(app, actions?.RemoveFullSpeed));
+        var add = Text("+ Add an app", 12.5, Theme.MoonMuted);
+        add.Margin = new Thickness(0, 6, 0, 0);
+        add.HorizontalAlignment = HorizontalAlignment.Left;
+        AutomationProperties.SetName(add, "Add an app");
+        if (actions?.ToggleAddList is { } toggle) Clickable(add, toggle, Theme.MoonMuted, Theme.Moon);
+        section.Children.Add(add);
+        if (page.Addable is { } addable) section.Children.Add(AddList(addable, actions?.AddFullSpeed));
+        return section;
+    }
+
+    /// <summary>A kept app's name, then the cross that takes it off, in reading order.</summary>
+    private static Grid KeptRow(FullSpeedApp app, Action<string>? remove)
+    {
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = Text(app.Label, 12.5, Theme.Moon);
+        label.TextWrapping = TextWrapping.NoWrap;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(label);
+        var cross = Text("\u00D7", 14, Theme.MoonFaint);
+        cross.Margin = new Thickness(12, 0, 0, 0);
+        cross.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(cross, "Remove " + app.Label);
+        if (remove is not null) Clickable(cross, () => remove(app.Name), Theme.MoonFaint, Theme.Moon);
+        Grid.SetColumn(cross, 1);
+        row.Children.Add(cross);
+        return row;
+    }
+
+    /// <summary>The apps Nightcrew would slow right now, on a raised card; clicking one keeps it at full speed.</summary>
+    private static Border AddList(IReadOnlyList<NamedApp> apps, Action<NamedApp>? add)
     {
         var rows = new StackPanel();
-        rows.Children.Add(Text("In Efficiency mode while you were away", 11, Theme.MoonFaint, bottom: 2));
-        var column = Text("Leave alone", 11, Theme.MoonFaint, bottom: 6);
-        column.HorizontalAlignment = HorizontalAlignment.Right;
-        rows.Children.Add(column);
-        for (var i = 0; i < apps.Count; i++)
+        if (apps.Count == 0)
         {
-            var app = apps[i];
-            Action<bool>? set = leaveAlone is null ? null : on => leaveAlone(app.RootName, on);
-            rows.Children.Add(SwitchRow(app.DisplayName, app.LeftAlone, set, bottom: i == apps.Count - 1 ? 0 : 8, offTrack: Theme.NightHover));
+            rows.Children.Add(new Border { Padding = new Thickness(8, 5, 8, 5), Child = Text("Nothing to add right now", 12.5, Theme.MoonFaint) });
+        }
+        foreach (var app in apps)
+        {
+            var label = Text(app.DisplayName, 12.5, Theme.Moon);
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            var row = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 5, 8, 5), Background = Brushes.Transparent, Child = label };
+            AutomationProperties.SetName(row, "Add " + app.DisplayName);
+            if (add is not null) Clickable(row, () => add(app), Colors.Transparent, Theme.NightHover);
+            rows.Children.Add(row);
         }
         return new Border
         {
             Background = Theme.Brush(Theme.NightRaised),
             CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12, 10, 12, 10),
-            Margin = new Thickness(0, 0, 0, 12),
+            Padding = new Thickness(4),
+            Margin = new Thickness(0, 6, 0, 0),
             Child = rows,
         };
-    }
-
-    /// <summary>A name on the Always leave alone list, then the cross that takes it off, in reading order.</summary>
-    private static Grid KeptRow(string name, Action<string>? remove)
-    {
-        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var label = Text(name, 12.5, Theme.MoonMuted);
-        label.VerticalAlignment = VerticalAlignment.Center;
-        row.Children.Add(label);
-        var cross = Text("\u00D7", 14, Theme.MoonFaint);
-        cross.VerticalAlignment = VerticalAlignment.Center;
-        AutomationProperties.SetName(cross, "Remove " + name);
-        if (remove is not null) Clickable(cross, () => remove(name), Theme.MoonFaint, Theme.Moon);
-        Grid.SetColumn(cross, 1);
-        row.Children.Add(cross);
-        return row;
     }
 
     private static StackPanel Facts(IReadOnlyList<PanelFact> facts)

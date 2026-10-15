@@ -129,7 +129,8 @@ internal static class Program
         var coordinator = new EfficiencyCoordinator(efficiency, new EfficiencySource(processes), settings, () => gpuSignal.BusyPids, log);
         var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, clock, coordinator);
 
-        using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log, efficiency, () => realPower.IdleTime);
+        using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log, efficiency,
+            () => realPower.IdleTime, coordinator.WouldSlowNow);
         Application.Run(tray);
     }
 

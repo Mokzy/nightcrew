@@ -377,15 +377,13 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
-    public void After_the_lid_opens_the_snapshot_lists_the_apps_from_the_time_away()
+    public void When_the_lid_opens_the_apps_come_out()
     {
         AwayWithSpotifyOpen();
-        Assert.Empty(_engine.Snapshot.Away!);
 
         _engine.Lid = LidState.Open;
         Tick();
 
-        Assert.Equal([new AwayApp("spotify", "spotify")], _engine.Snapshot.Away);
         Assert.Equal(0, _engine.Snapshot.EfficiencyApps);
         Assert.Contains("RestoreAll:lid opened", _calls);
     }

@@ -2,22 +2,29 @@ namespace Nightcrew.Core;
 
 /// <summary>
 /// Each tick: asks the gate, and while you're away re-plans and drives Efficiency mode. Apps that became needed go
-/// back; new apps go in. Keeps the list of apps from the most recent time away for the panel.
+/// back; new apps go in.
 /// </summary>
 public sealed class EfficiencyCoordinator(IEfficiencyMode efficiency, IEfficiencySource source, Settings settings,
     Func<IReadOnlyCollection<int>> holderPids, ILog log)
 {
-    private readonly List<AwayApp> _away = [];
     private readonly HashSet<string> _deniedLogged = new(StringComparer.OrdinalIgnoreCase);
     private string? _loggedKept;
 
     /// <summary>True while you're away and Efficiency mode is wanted.</summary>
     public bool Active { get; private set; }
 
-    /// <summary>The apps put into Efficiency mode during the most recent time away.</summary>
-    public IReadOnlyList<AwayApp> Away => _away.ToList();
-
     public int AppCount => efficiency.Applied.Count;
+
+    /// <summary>
+    /// The apps that would go into Efficiency mode if you were away now, by name, for Settings' Add an app list.
+    /// Plans only; changes nothing.
+    /// </summary>
+    public IReadOnlyList<NamedApp> WouldSlowNow() =>
+        Plan().Apply
+            .Select(family => new NamedApp(family.DisplayName, family.RootName))
+            .GroupBy(app => app.RootName, StringComparer.OrdinalIgnoreCase).Select(same => same.First())
+            .OrderBy(app => app.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
 
     public void Step(Mode mode, LidState lid, TimeSpan idleTime, LidAction ownerLid)
     {
@@ -30,12 +37,11 @@ public sealed class EfficiencyCoordinator(IEfficiencyMode efficiency, IEfficienc
         if (!Active)
         {
             Active = true;
-            _away.Clear();
             _loggedKept = null;
         }
 
         var generation = efficiency.Generation;
-        var plan = new EfficiencyPlanner(settings, source.DisplayName).Plan(source.Take(holderPids()));
+        var plan = Plan();
         var planned = new HashSet<ProcessRef>(plan.Apply.Select(family => family.Root));
         foreach (var root in efficiency.Applied.Where(root => !planned.Contains(root)).ToList())
             efficiency.Restore(root, "left alone now");
@@ -48,9 +54,6 @@ public sealed class EfficiencyCoordinator(IEfficiencyMode efficiency, IEfficienc
                     return;
                 case ApplyResult.Denied:
                     if (_deniedLogged.Add(family.RootName)) log.Info($"Can't change {family.RootName}: access denied");
-                    break;
-                case ApplyResult.Applied:
-                    if (!_away.Any(app => app.RootName == family.RootName)) _away.Add(new AwayApp(family.DisplayName, family.RootName));
                     break;
             }
         }
@@ -67,6 +70,8 @@ public sealed class EfficiencyCoordinator(IEfficiencyMode efficiency, IEfficienc
         Active = false;
         return efficiency.RestoreAll(reason);
     }
+
+    private EfficiencyPlan Plan() => new EfficiencyPlanner(settings, source.DisplayName).Plan(source.Take(holderPids()));
 
     private string OffReason(Mode mode, LidState lid, TimeSpan idleTime, LidAction ownerLid)
     {

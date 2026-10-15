@@ -6,15 +6,37 @@ namespace Nightcrew.Tests;
 public sealed class SettingsModelTests
 {
     [Fact]
-    public void Efficiency_mode_is_on_by_default_and_the_leave_alone_list_is_sorted()
+    public void Efficiency_mode_is_on_by_default_with_nothing_kept_at_full_speed()
     {
-        Assert.True(SettingsModel.From(new Settings()).EfficiencyWhileAway);
-        Assert.Empty(SettingsModel.From(new Settings()).LeaveAlone!);
+        var page = SettingsModel.From(new Settings());
 
-        var page = SettingsModel.From(new Settings { EfficiencyWhileAway = false, LeaveAlone = ["whatsapp.root", "Olk", "discord"] });
+        Assert.True(page.EfficiencyWhileAway);
+        Assert.Empty(page.FullSpeed!);
+        Assert.Null(page.Addable);
+    }
+
+    [Fact]
+    public void Apps_kept_at_full_speed_show_by_their_label_sorted_and_fall_back_to_the_process_name()
+    {
+        var page = SettingsModel.From(new Settings
+        {
+            EfficiencyWhileAway = false,
+            LeaveAlone = ["whatsapp.root", "Olk", "discord"],
+            LeaveAloneLabels = new() { ["olk"] = "Microsoft Outlook", ["whatsapp.root"] = "WhatsApp" },
+        });
 
         Assert.False(page.EfficiencyWhileAway);
-        Assert.Equal(["discord", "Olk", "whatsapp.root"], page.LeaveAlone);
+        Assert.Equal([new FullSpeedApp("discord", "discord"), new FullSpeedApp("Microsoft Outlook", "Olk"), new FullSpeedApp("WhatsApp", "whatsapp.root")],
+            page.FullSpeed);
+    }
+
+    [Fact]
+    public void The_apps_to_add_are_sorted_and_skip_any_already_kept_at_full_speed()
+    {
+        var page = SettingsModel.From(new Settings { LeaveAlone = ["olk"] },
+            [new NamedApp("Spotify", "spotify"), new NamedApp("Microsoft Outlook", "OLK"), new NamedApp("Discord", "discord")]);
+
+        Assert.Equal([new NamedApp("Discord", "discord"), new NamedApp("Spotify", "spotify")], page.Addable);
     }
 
     [Fact]

@@ -54,5 +54,5 @@ public interface IEfficiencySource
     string DisplayName(ProcessInfo root);
 }
 
-/// <summary>An app that was in Efficiency mode while you were away, as the panel lists it.</summary>
-public sealed record AwayApp(string DisplayName, string RootName);
+/// <summary>An app by the name Settings shows and the root process name Nightcrew matches.</summary>
+public sealed record NamedApp(string DisplayName, string RootName);
