@@ -9,7 +9,9 @@ public sealed record SettingsPage(
     IReadOnlyList<Choice<int>> LidClosedLimit,
     bool LockOnLidClose,
     bool StartAtLogin,
-    IReadOnlyList<Choice<MarkKind>> Mark);
+    IReadOnlyList<Choice<MarkKind>> Mark,
+    bool EfficiencyWhileAway = true,
+    IReadOnlyList<string>? LeaveAlone = null);
 
 /// <summary>Turns the settings into the settings page's choices. Pure, so the page's words are unit-tested.</summary>
 public static class SettingsModel
@@ -25,7 +27,9 @@ public static class SettingsModel
             Choices(LidClosedLimits, settings.LidClosedCapHours, value => value + " h"),
             settings.LockOnLidClose,
             settings.StartAtLogin,
-            [new("Lantern", MarkKind.Lantern, mark == MarkKind.Lantern), new("Moon and star", MarkKind.MoonAndStar, mark == MarkKind.MoonAndStar)]);
+            [new("Lantern", MarkKind.Lantern, mark == MarkKind.Lantern), new("Moon and star", MarkKind.MoonAndStar, mark == MarkKind.MoonAndStar)],
+            settings.EfficiencyWhileAway,
+            settings.LeaveAlone.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList());
     }
 
     /// <summary>

@@ -6,6 +6,18 @@ namespace Nightcrew.Tests;
 public sealed class SettingsModelTests
 {
     [Fact]
+    public void Efficiency_mode_is_on_by_default_and_the_leave_alone_list_is_sorted()
+    {
+        Assert.True(SettingsModel.From(new Settings()).EfficiencyWhileAway);
+        Assert.Empty(SettingsModel.From(new Settings()).LeaveAlone!);
+
+        var page = SettingsModel.From(new Settings { EfficiencyWhileAway = false, LeaveAlone = ["whatsapp.root", "Olk", "discord"] });
+
+        Assert.False(page.EfficiencyWhileAway);
+        Assert.Equal(["discord", "Olk", "whatsapp.root"], page.LeaveAlone);
+    }
+
+    [Fact]
     public void Defaults_select_20_percent_8_hours_and_the_lantern()
     {
         var page = SettingsModel.From(new Settings());

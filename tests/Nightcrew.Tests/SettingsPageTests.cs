@@ -24,7 +24,7 @@ public sealed class SettingsPageTests
             "‹", "Settings",
             "Battery floor", "10%", "15%", "20%", "30%", "Off",
             "Lid-closed limit", "2 h", "4 h", "8 h", "12 h", "Off",
-            "Lock when lid closes", "Start at login",
+            "Lock when lid closes", "Start at login", "Efficiency mode while away",
             "Tray mark", "Lantern", "Moon and star",
             "Open log", "Quit Nightcrew",
         ], texts);
@@ -75,6 +75,38 @@ public sealed class SettingsPageTests
         });
 
         Assert.Equal(["floor 30", "limit 0", "lock False", "login False", "mark MoonAndStar", "log", "quit", "back"], calls);
+    }
+
+    [Fact]
+    public void The_efficiency_switch_and_each_cross_report_back()
+    {
+        var page = SettingsModel.From(new Settings { LeaveAlone = ["whatsapp.root", "olk"] });
+        var calls = Sta.Run(() =>
+        {
+            var calls = new List<string>();
+            var root = PanelVisual.BuildSettings(page, Actions() with
+            {
+                EfficiencyWhileAway = on => calls.Add($"efficiency {on}"),
+                RemoveLeaveAlone = name => calls.Add($"remove {name}"),
+            });
+            Click(Named<FrameworkElement>(root, "Efficiency mode while away"));
+            Click(Named<FrameworkElement>(root, "Remove olk"));
+            return calls;
+        });
+
+        Assert.Equal(["efficiency False", "remove olk"], calls);
+    }
+
+    [Fact]
+    public void The_always_leave_alone_list_shows_only_when_it_has_apps()
+    {
+        var (empty, listed) = Sta.Run(() => (
+            Texts(PanelVisual.BuildSettings(Defaults, null)),
+            Texts(PanelVisual.BuildSettings(SettingsModel.From(new Settings { LeaveAlone = ["whatsapp.root", "olk"] }), null))));
+
+        Assert.DoesNotContain("Always leave alone", empty);
+        var at = listed.IndexOf("Always leave alone");
+        Assert.Equal(["Always leave alone", "olk", "×", "whatsapp.root", "×"], listed.Skip(at).Take(5));
     }
 
     [Fact]

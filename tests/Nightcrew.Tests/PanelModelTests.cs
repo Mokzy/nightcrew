@@ -11,6 +11,26 @@ public sealed class PanelModelTests
         new(mode, lid, live, holders, source, battery, owner, hold, paused, warning);
 
     [Fact]
+    public void Once_you_are_back_the_apps_from_the_time_away_are_listed_with_their_leave_alone_state()
+    {
+        var snapshot = Snap(mode: Mode.Armed, live: true) with { Away = [new AwayApp("Microsoft Outlook", "olk"), new AwayApp("WhatsApp", "whatsapp.root")] };
+
+        var view = PanelModel.From(snapshot, 20, leaveAlone: ["OLK"]);
+
+        Assert.Equal([new AwayRow("Microsoft Outlook", "olk", true), new AwayRow("WhatsApp", "whatsapp.root", false)], view.Away);
+    }
+
+    [Fact]
+    public void With_the_lid_closed_or_nothing_from_the_time_away_there_is_no_list()
+    {
+        var closed = Snap(mode: Mode.Armed, live: true, lid: LidState.Closed) with { Away = [new AwayApp("WhatsApp", "whatsapp.root")] };
+
+        Assert.Null(PanelModel.From(closed, 20).Away);
+        Assert.Null(PanelModel.From(Snap(), 20).Away);
+        Assert.Null(PanelModel.From(Snap() with { Away = [] }, 20).Away);
+    }
+
+    [Fact]
     public void Quiet_says_all_quiet_and_what_the_lid_does()
     {
         var view = PanelModel.From(Snap(owner: LidAction.DoNothing), 20);

@@ -10,12 +10,16 @@ using Nightcrew.Core;
 
 namespace Nightcrew.App.Ui;
 
-/// <summary>What the panel's three controls do. Null when the panel is only drawn, as for the README.</summary>
-public sealed record PanelActions(Action Hold, Action Pause, Action Settings);
+/// <summary>
+/// What the panel's controls do. Null when the panel is only drawn, as for the README. <paramref name="LeaveAlone"/> gets an
+/// app's root process name and whether it should now be left alone.
+/// </summary>
+public sealed record PanelActions(Action Hold, Action Pause, Action Settings, Action<string, bool>? LeaveAlone = null);
 
 /// <summary>What the settings page's controls do: each setter gets the new value. Null when the page is only drawn.</summary>
 public sealed record SettingsActions(Action Back, Action<int> BatteryFloor, Action<int> LidClosedLimit,
-    Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit);
+    Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit,
+    Action<bool>? EfficiencyWhileAway = null, Action<string>? RemoveLeaveAlone = null);
 
 /// <summary>Builds the click panel from a <see cref="PanelView"/>. The same tree is shown in the window and rendered for the README.</summary>
 public static class PanelVisual
@@ -35,6 +39,7 @@ public static class PanelVisual
         body.Children.Add(Headline(view));
         body.Children.Add(Text(view.SubLine, 12.5, Theme.MoonMuted, bottom: 16, lineHeight: 18));
         if (view.Holders.Count > 0) body.Children.Add(Holders(view.Holders));
+        if (view.Away is { Count: > 0 } away) body.Children.Add(AwayCard(away, actions?.LeaveAlone));
         body.Children.Add(Facts(view.Facts));
         body.Children.Add(Buttons(view, actions));
         if (view.Warning is { } warning) body.Children.Add(WarningRow(warning));
@@ -54,7 +59,14 @@ public static class PanelVisual
         body.Children.Add(Segments("Lid-closed limit", page.LidClosedLimit, actions?.LidClosedLimit));
         body.Children.Add(Hairline());
         body.Children.Add(SwitchRow("Lock when lid closes", page.LockOnLidClose, actions?.LockOnLidClose, bottom: 12));
-        body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 0));
+        body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 12));
+        body.Children.Add(SwitchRow("Efficiency mode while away", page.EfficiencyWhileAway, actions?.EfficiencyWhileAway, bottom: 0));
+        if (page.LeaveAlone is { Count: > 0 } kept)
+        {
+            body.Children.Add(Hairline());
+            body.Children.Add(Text("Always leave alone", 12.5, Theme.Moon, bottom: 4));
+            foreach (var name in kept) body.Children.Add(KeptRow(name, actions?.RemoveLeaveAlone));
+        }
         body.Children.Add(Hairline());
         body.Children.Add(Text("Tray mark", 12.5, Theme.Moon));
         body.Children.Add(Segments("Tray mark", page.Mark, actions?.Mark));
@@ -141,8 +153,11 @@ public static class PanelVisual
         };
     }
 
-    /// <summary>A label with an on/off switch; clicking anywhere on the row flips it.</summary>
-    private static Border SwitchRow(string label, bool on, Action<bool>? set, double bottom)
+    /// <summary>
+    /// A label with an on/off switch; clicking anywhere on the row flips it. On a raised card, pass a lighter
+    /// <paramref name="offTrack"/> so an off switch's track still shows.
+    /// </summary>
+    private static Border SwitchRow(string label, bool on, Action<bool>? set, double bottom, Color? offTrack = null)
     {
         var knob = new System.Windows.Shapes.Ellipse
         {
@@ -153,7 +168,7 @@ public static class PanelVisual
             HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var track = new Border { Width = 30, Height = 18, CornerRadius = new CornerRadius(9), Background = Theme.Brush(on ? Theme.Lavender : Theme.NightRaised), Child = knob };
+        var track = new Border { Width = 30, Height = 18, CornerRadius = new CornerRadius(9), Background = Theme.Brush(on ? Theme.Lavender : offTrack ?? Theme.NightRaised), Child = knob };
         var dock = new DockPanel();
         DockPanel.SetDock(track, Dock.Right);
         dock.Children.Add(track);
@@ -221,6 +236,48 @@ public static class PanelVisual
             Margin = new Thickness(0, 0, 0, 12),
             Child = rows,
         };
+    }
+
+    /// <summary>The apps from the most recent time away, each with a Leave alone switch.</summary>
+    private static Border AwayCard(IReadOnlyList<AwayRow> apps, Action<string, bool>? leaveAlone)
+    {
+        var rows = new StackPanel();
+        rows.Children.Add(Text("In Efficiency mode while you were away", 11, Theme.MoonFaint, bottom: 2));
+        var column = Text("Leave alone", 11, Theme.MoonFaint, bottom: 6);
+        column.HorizontalAlignment = HorizontalAlignment.Right;
+        rows.Children.Add(column);
+        for (var i = 0; i < apps.Count; i++)
+        {
+            var app = apps[i];
+            Action<bool>? set = leaveAlone is null ? null : on => leaveAlone(app.RootName, on);
+            rows.Children.Add(SwitchRow(app.DisplayName, app.LeftAlone, set, bottom: i == apps.Count - 1 ? 0 : 8, offTrack: Theme.NightHover));
+        }
+        return new Border
+        {
+            Background = Theme.Brush(Theme.NightRaised),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12, 10, 12, 10),
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = rows,
+        };
+    }
+
+    /// <summary>A name on the Always leave alone list, then the cross that takes it off, in reading order.</summary>
+    private static Grid KeptRow(string name, Action<string>? remove)
+    {
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = Text(name, 12.5, Theme.MoonMuted);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(label);
+        var cross = Text("\u00D7", 14, Theme.MoonFaint);
+        cross.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(cross, "Remove " + name);
+        if (remove is not null) Clickable(cross, () => remove(name), Theme.MoonFaint, Theme.Moon);
+        Grid.SetColumn(cross, 1);
+        row.Children.Add(cross);
+        return row;
     }
 
     private static StackPanel Facts(IReadOnlyList<PanelFact> facts)
