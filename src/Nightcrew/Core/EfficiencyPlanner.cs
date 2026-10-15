@@ -23,8 +23,8 @@ public sealed record EfficiencyPlan(IReadOnlyList<AppFamily> Apply, IReadOnlyLis
 
 /// <summary>
 /// Turns a snapshot into the apps to put into Efficiency mode and the apps to leave alone. An app is the family of a
-/// process that owns an Alt+Tab window: its topmost same-session ancestor below the shell, every descendant, and
-/// orphans with the root's name. If any member is kept, the whole family is.
+/// process that owns an Alt+Tab window: its topmost same-session ancestor below the shell, every process whose own
+/// climb ends at that root, and same-name roots that lost their parent. If any member is kept, the whole family is.
 /// </summary>
 public sealed class EfficiencyPlanner(Settings settings, Func<ProcessInfo, string>? displayName = null)
 {
@@ -42,19 +42,27 @@ public sealed class EfficiencyPlanner(Settings settings, Func<ProcessInfo, strin
         var holders = snapshot.HolderPids.ToHashSet();
         var owners = snapshot.WindowOwners.ToHashSet();
 
+        // Every process in the session belongs to the root RootOf climbs to, so a family never reaches past the
+        // shell: explorer started most apps, and its own File Explorer windows make it a window owner too.
+        var rootOf = byPid.Values.Where(p => p.Session == snapshot.Session).ToDictionary(p => p.Pid, p => RootOf(p, byPid).Pid);
+        var byRoot = rootOf.GroupBy(pair => pair.Value).ToDictionary(g => g.Key, g => g.Select(pair => byPid[pair.Key]).ToList());
+
+        // Roots with a real parent come first, so a same-name root that lost its parent joins one of them.
         var roots = snapshot.WindowOwners
-            .Where(pid => byPid.TryGetValue(pid, out var p) && p.Session == snapshot.Session)
-            .Select(pid => RootOf(byPid[pid], byPid))
+            .Where(rootOf.ContainsKey)
+            .Select(pid => byPid[rootOf[pid]])
             .Distinct()
-            .OrderBy(root => root.Pid)
+            .OrderBy(root => HasRealParent(root, byPid) ? 0 : 1)
+            .ThenBy(root => root.Pid)
             .ToList();
 
-        var claimed = new HashSet<int>();
+        var merged = new HashSet<int>();
         var apply = new List<AppFamily>();
         var kept = new List<KeptApp>();
         foreach (var root in roots)
         {
-            var members = FamilyOf(root, snapshot, children, byPid, claimed);
+            if (!merged.Add(root.Pid)) continue;
+            var members = FamilyOf(root, byRoot, byPid, merged);
             var rule = Rule(root, members, owners, holders, agentTree, serving);
             if (rule is not null)
             {
@@ -98,22 +106,28 @@ public sealed class EfficiencyPlanner(Settings settings, Func<ProcessInfo, strin
         return current;
     }
 
-    /// <summary>The root first, then its descendants and same-name orphans, each process in at most one family.</summary>
-    private static List<ProcessInfo> FamilyOf(ProcessInfo root, EfficiencySnapshot snapshot, ILookup<int, ProcessInfo> children,
-        Dictionary<int, ProcessInfo> byPid, HashSet<int> claimed)
+    /// <summary>
+    /// The root first, then everything under it and under same-name roots that lost their parent (helpers left
+    /// behind when their parent exited). Each merged root is marked, so it never becomes a family of its own.
+    /// </summary>
+    private static List<ProcessInfo> FamilyOf(ProcessInfo root, Dictionary<int, List<ProcessInfo>> byRoot,
+        Dictionary<int, ProcessInfo> byPid, HashSet<int> merged)
     {
-        var heads = new List<ProcessInfo> { root };
+        var members = new List<ProcessInfo>(byRoot[root.Pid]);
         if (!LeaveAloneRules.Matches(LeaveAloneRules.SharedRuntimes, root.Name))
         {
-            heads.AddRange(snapshot.Processes.Where(p =>
-                p.Pid != root.Pid && p.Session == root.Session && string.Equals(p.Name, root.Name, StringComparison.OrdinalIgnoreCase)
-                && !HasRealParent(p, byPid)));
+            var orphans = byRoot.Keys
+                .Where(pid => !merged.Contains(pid))
+                .Select(pid => byPid[pid])
+                .Where(other => string.Equals(other.Name, root.Name, StringComparison.OrdinalIgnoreCase) && !HasRealParent(other, byPid))
+                .ToList();
+            foreach (var orphan in orphans)
+            {
+                merged.Add(orphan.Pid);
+                members.AddRange(byRoot[orphan.Pid]);
+            }
         }
-        var members = new List<ProcessInfo>();
-        foreach (var process in Descendants(heads, children).Select(pid => byPid[pid]))
-            if (claimed.Add(process.Pid)) members.Add(process);
-        var rootFirst = members.Where(p => p.Pid == root.Pid).Concat(members.Where(p => p.Pid != root.Pid).OrderBy(p => p.Pid));
-        return rootFirst.ToList();
+        return members.Where(p => p.Pid == root.Pid).Concat(members.Where(p => p.Pid != root.Pid).OrderBy(p => p.Pid)).ToList();
     }
 
     private static bool HasRealParent(ProcessInfo process, Dictionary<int, ProcessInfo> byPid) =>

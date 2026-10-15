@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
 using Nightcrew.Core;
 
 namespace Nightcrew.Platform;
@@ -207,13 +206,17 @@ public sealed class EfficiencyMode : IEfficiencyMode
         && exited == 0
         && DateTime.FromFileTimeUtc(created) == startUtc;
 
-    /// <summary>A low priority, any throttling setting of its own, or a priority we can't read.</summary>
+    /// <summary>
+    /// A low priority, any throttling setting of its own (any control bit, not just execution speed: setting the
+    /// state replaces the whole mask), or a priority we can't read. So every process we touch started with Windows
+    /// deciding its throttling, and restoring "Windows decides" puts it back exactly.
+    /// </summary>
     private static bool MadeItsOwnChoice(IntPtr handle, out uint priority)
     {
         priority = GetPriorityClass(handle);
         if (priority is 0 or IdlePriority or BelowNormalPriority) return true;
         var state = new ThrottlingState { Version = ThrottlingVersion };
-        return GetProcessInformation(handle, ProcessPowerThrottling, ref state, StateSize) && (state.ControlMask & ExecutionSpeed) != 0;
+        return GetProcessInformation(handle, ProcessPowerThrottling, ref state, StateSize) && state.ControlMask != 0;
     }
 
     /// <summary>Writes the record, or deletes it when nothing is in Efficiency mode. False if it couldn't be written.</summary>
@@ -236,20 +239,31 @@ public sealed class EfficiencyMode : IEfficiencyMode
         }
     }
 
-    /// <summary>The entries an earlier run left; a corrupt record is moved aside to .corrupt.</summary>
+    /// <summary>
+    /// The entries an earlier run left. Never throws: startup, the watchdog and uninstall all load the record, and a
+    /// damaged one (a power cut can leave zero bytes) must not stop them. It's moved aside to .corrupt instead.
+    /// </summary>
     private List<EfficiencyEntry> Load()
     {
-        if (!File.Exists(_path)) return [];
         try
         {
-            return Json.Deserialize<EfficiencyRecord?>(File.ReadAllText(_path))?.Entries ?? [];
+            if (!File.Exists(_path)) return [];
+            var entries = Json.Deserialize<EfficiencyRecord?>(File.ReadAllText(_path))?.Entries ?? [];
+            return entries.Where(entry => entry is not null).ToList();
         }
-        catch (SerializationException ex)
+        catch (Exception ex)
         {
             var aside = _path + ".corrupt";
-            File.Delete(aside);
-            File.Move(_path, aside);
-            _log.Warn($"Efficiency mode record was corrupt, moved to {aside}: {ex.Message}");
+            try
+            {
+                File.Delete(aside);
+                File.Move(_path, aside);
+                _log.Warn($"Efficiency mode record was unreadable, moved to {aside}: {ex.Message}");
+            }
+            catch (Exception moveFailed)
+            {
+                _log.Warn($"Efficiency mode record was unreadable ({ex.Message}) and couldn't be moved aside: {moveFailed.Message}");
+            }
             return [];
         }
     }

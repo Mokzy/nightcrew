@@ -278,4 +278,51 @@ public sealed class EfficiencyPlannerTests
         Assert.Equal("Microsoft Outlook", family.DisplayName);
         Assert.Equal("olk", family.RootName);
     }
+
+    [Fact]
+    public void Apps_started_by_explorer_stay_their_own_apps_while_explorer_owns_a_window()
+    {
+        // File Explorer windows belong to explorer, which also started most apps.
+        Window(2);
+        Add(10, 2, "chrome", 5);
+        Add(11, 10, "chrome", 6);
+        Window(10);
+        Add(20, 2, "olk", 5);
+        Window(20);
+
+        var plan = Plan();
+
+        Assert.Equal([[10, 11], [20]], plan.Apply.Select(Pids));
+        Assert.Equal("system", RuleFor(plan, "explorer"));
+    }
+
+    [Theory]
+    [InlineData(30, 40)]
+    [InlineData(40, 30)]
+    public void Two_windows_of_one_app_where_one_process_lost_its_parent_make_one_family(int withParent, int orphan)
+    {
+        Add(withParent, 2, "notepad", 5);
+        Add(orphan, 999, "notepad", 6); // its parent has exited
+        Window(withParent);
+        Window(orphan);
+
+        var family = Assert.Single(Plan().Apply);
+
+        Assert.Equal(withParent, family.Root.Pid);
+        Assert.Equal(new[] { withParent, orphan }.OrderBy(pid => pid == withParent ? 0 : 1), Pids(family));
+    }
+
+    [Fact]
+    public void No_app_is_ever_planned_without_processes()
+    {
+        Window(2);
+        Add(10, 2, "notepad", 5);
+        Add(13, 999, "notepad", 6);
+        Add(14, 999, "notepad", 7);
+        Window(10);
+        Window(13);
+        Window(14);
+
+        Assert.All(Plan().Apply, family => Assert.NotEmpty(family.Processes));
+    }
 }

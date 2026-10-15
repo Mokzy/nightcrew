@@ -66,11 +66,62 @@ public sealed class EfficiencyModeTests : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetProcessInformation(IntPtr process, int infoClass, ref ThrottlingState info, int size);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessInformation(IntPtr process, int infoClass, ref ThrottlingState info, int size);
+
     private static bool ThrottledOf(Process process)
+    {
+        var (control, state) = MasksOf(process);
+        return (control & 1) != 0 && (state & 1) != 0;
+    }
+
+    private static (uint Control, uint State) MasksOf(Process process)
     {
         var state = new ThrottlingState { Version = 1 };
         Assert.True(GetProcessInformation(process.Handle, 4, ref state, Marshal.SizeOf<ThrottlingState>()));
-        return (state.ControlMask & 1) != 0 && (state.StateMask & 1) != 0;
+        return (state.ControlMask, state.StateMask);
+    }
+
+    [Fact]
+    public void A_process_with_any_throttling_choice_of_its_own_is_left_alone()
+    {
+        var (child, process) = StartChild();
+        // The app opted out of timer-resolution throttling (PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION).
+        var own = new ThrottlingState { Version = 1, ControlMask = 4, StateMask = 0 };
+        Assert.True(SetProcessInformation(child.Handle, 4, ref own, Marshal.SizeOf<ThrottlingState>()));
+        var mode = Create();
+
+        Assert.Equal(ApplyResult.Unchanged, mode.Apply(Family(process), mode.Generation));
+
+        Assert.Equal((4u, 0u), MasksOf(child));
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(child));
+        Assert.False(File.Exists(RecordPath));
+    }
+
+    [Fact]
+    public void A_record_of_zero_bytes_from_a_power_cut_is_moved_aside_and_nothing_breaks()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllBytes(RecordPath, new byte[64]);
+
+        var mode = Create();
+
+        Assert.Equal(0, mode.RestoreAll("startup"));
+        Assert.True(File.Exists(RecordPath + ".corrupt"));
+        Assert.False(File.Exists(RecordPath));
+    }
+
+    [Fact]
+    public void A_record_with_an_empty_entry_still_puts_back_the_rest()
+    {
+        var (child, process) = StartChild();
+        Create().Apply(Family(process), 0);
+        var record = File.ReadAllText(RecordPath);
+        File.WriteAllText(RecordPath, record.Replace("\"Entries\":[", "\"Entries\":[null,"));
+
+        Assert.Equal(1, Create().RestoreAll("startup"));
+
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(child));
     }
 
     [Fact]
