@@ -79,21 +79,20 @@ public sealed class MarkTests
     }
 
     [Fact]
-    public void A_light_taskbar_gets_the_deep_lavender()
+    public void A_light_taskbar_gets_the_deep_amber()
     {
-        Sta.Run(() =>
-        {
-            Assert.Equal(Theme.Lavender, CentreOfGlass(Theme.Moon));
-            Assert.Equal(Theme.LavenderDeep, CentreOfGlass(Theme.Night));
-        });
+        var (dark, light) = Sta.Run(() => (
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon)), FlameX, FlameY),
+            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Night)), FlameX, FlameY)));
 
-        static Color CentreOfGlass(Color ink)
-        {
-            var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, ink));
-            var i = (58 * 96 + 48) * 4; // grid (12, 14.5) at 4 px per unit
-            return Color.FromRgb(bgra[i + 2], bgra[i + 1], bgra[i]);
-        }
+        Assert.Equal(Theme.Amber, Color.FromRgb(dark.R, dark.G, dark.B));
+        Assert.Equal(Theme.AmberDeep, Color.FromRgb(light.R, light.G, light.B));
     }
+
+    // Points of a 96 px tray render (4 px per grid unit, after the tray's 1.18 scale about the centre).
+    private const int FlameX = 48, FlameY = 46; // grid (12, 11.5): the flame's body, above its core
+    private const int CoreY = 64; // grid (12, 16): the flame's pale core
+    private const int GlassX = 33, GlassY = 42; // grid (8.25, 10.5): the glass beside the flame
 
     /// <summary>The colour at a point of a 96 px render (4 px per grid unit), with its alpha.</summary>
     private static Color At(byte[] bgra, int x, int y)
@@ -103,16 +102,51 @@ public sealed class MarkTests
     }
 
     [Fact]
-    public void Working_fills_the_lantern_glass_and_idle_leaves_it_empty()
+    public void Working_lights_an_amber_flame_in_empty_glass_and_idle_leaves_the_lantern_empty()
     {
         var (working, idle) = Sta.Run(() => (
-            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon)), 36, 70),
-            At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Idle, 96, Theme.Moon)), 36, 70)));
+            MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon)),
+            MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Idle, 96, Theme.Moon))));
 
-        // Grid (9, 17.5): low in the glass, beside where a flame would be.
-        Assert.Equal(Theme.Lavender, Color.FromRgb(working.R, working.G, working.B));
-        Assert.Equal(255, working.A);
-        Assert.Equal(0, idle.A);
+        var flame = At(working, FlameX, FlameY);
+        var core = At(working, FlameX, CoreY);
+        Assert.Equal(Theme.Amber, Color.FromRgb(flame.R, flame.G, flame.B));
+        Assert.Equal(255, flame.A);
+        Assert.Equal(Theme.AmberCore, Color.FromRgb(core.R, core.G, core.B));
+        Assert.Equal(0, At(working, GlassX, GlassY).A);
+
+        Assert.Equal(0, At(idle, FlameX, FlameY).A);
+        Assert.Equal(0, At(idle, FlameX, CoreY).A);
+    }
+
+    [Fact]
+    public void The_working_flame_is_bigger_than_the_app_icons()
+    {
+        var (tall, small) = Sta.Run(() =>
+        {
+            var bgra = MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon));
+            var rows = Enumerable.Range(0, 96).Where(y => At(bgra, FlameX, y) is var c && c.A == 255 && c.R == Theme.Amber.R && c.G == Theme.Amber.G).ToList();
+            return (rows.Last() - rows.First(), 7.3 * 4 * 1.18); // the app icon's flame is 7.3 units tall
+        });
+
+        Assert.True(tall > small * 1.1, $"flame column spans {tall} px, the app icon's flame would be {small:F0} px");
+    }
+
+    [Fact]
+    public void The_locked_mark_is_the_working_lantern_with_a_padlock_at_its_lower_right()
+    {
+        var (locked, working) = Sta.Run(() => (
+            MarkGeometry.ToBgra(MarkGeometry.RenderLocked(96)),
+            MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon))));
+
+        var flame = At(locked, FlameX, FlameY);
+        var body = At(locked, 84, 84); // grid (21, 21): the padlock's body, clear of the lantern
+        var keyhole = At(locked, 76, 76); // grid (19, 19)
+        Assert.Equal(Theme.Amber, Color.FromRgb(flame.R, flame.G, flame.B));
+        Assert.Equal(Theme.Moon, Color.FromRgb(body.R, body.G, body.B));
+        Assert.Equal(255, body.A);
+        Assert.Equal(Theme.Night, Color.FromRgb(keyhole.R, keyhole.G, keyhole.B));
+        Assert.Equal(0, At(working, 84, 84).A); // the working lantern has nothing there
     }
 
     [Fact]
@@ -123,7 +157,7 @@ public sealed class MarkTests
             At(MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.MoonAndStar, MarkState.Idle, 96, Theme.Moon)), 24, 60)));
 
         // Grid (6, 15): inside the crescent.
-        Assert.Equal(Theme.Lavender, Color.FromRgb(working.R, working.G, working.B));
+        Assert.Equal(Theme.Amber, Color.FromRgb(working.R, working.G, working.B));
         Assert.Equal(0, idle.A);
     }
 

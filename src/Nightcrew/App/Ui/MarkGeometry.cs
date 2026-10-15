@@ -24,6 +24,12 @@ public static class MarkGeometry
     internal const string Moon = "M19.5,15 A8.5,8.5 0 1 1 9,4.5 A7.5,7.5 0 0 0 19.5,15 Z";
     internal const string Star = "M18.5,1.8 Q18.5,5.5 22.2,5.5 Q18.5,5.5 18.5,9.2 Q18.5,5.5 14.8,5.5 Q18.5,5.5 18.5,1.8 Z";
 
+    // A padlock at the lantern's lower right, for the README's "You close the lid" step: a shackle over a body with a
+    // keyhole.
+    internal const string PadlockShackle = "M16.6,16.2 V14.6 A2.4,2.4 0 0 1 21.4,14.6 V16.2";
+    private static readonly Rect PadlockBody = new(15.2, 16.2, 7.6, 6.2);
+    private static readonly Point PadlockKeyhole = new(19, 18.9);
+
     /// <summary>Sizes in the app's .ico. The 256 px frame is stored as PNG, the rest as bitmaps.</summary>
     public static IReadOnlyList<int> AppIconSizes { get; } = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 
@@ -36,10 +42,13 @@ public static class MarkGeometry
     /// </summary>
     internal const double TrayLanternScale = 1.18;
 
+    // The working flame: the lantern's flame 1.2 times as big, filling most of the glass, with a pale core near its base.
+    private const double WorkingFlameScale = 1.2, WorkingFlameTip = 9.4, CoreScale = 0.62, CoreTip = 12.93;
+
     /// <summary>
-    /// The mark for one state, in grid units, frozen. Working fills the lantern's glass, or the moon, with lavender,
-    /// which reads at a glance in the tray. <paramref name="ink"/> is the stroke colour; on a light taskbar it is
-    /// Night, and the lavender deepens so the fill still shows.
+    /// The mark for one state, in grid units, frozen. Working lights an amber flame in the lantern's empty glass, or
+    /// fills the moon with amber, which stands out from the white icons beside it in the tray. <paramref name="ink"/>
+    /// is the stroke colour; on a light taskbar it is Night, and the amber deepens so it still shows.
     /// </summary>
     public static Drawing Build(MarkKind kind, MarkState state, double strokeWidth, Color ink)
     {
@@ -47,7 +56,9 @@ public static class MarkGeometry
         var pen = new Pen(Theme.Brush(ink), strokeWidth) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         pen.Freeze();
         var inkFill = Theme.Brush(ink);
-        var lavender = Theme.Brush(ink == Theme.Night ? Theme.LavenderDeep : Theme.Lavender);
+        var light = ink == Theme.Night;
+        var amber = Theme.Brush(light ? Theme.AmberDeep : Theme.Amber);
+        var core = Theme.Brush(light ? Theme.AmberDeepCore : Theme.AmberCore);
         var working = state == MarkState.Live;
 
         void Add(string path, Brush? fill, Pen? stroke) => group.Children.Add(new GeometryDrawing(fill, stroke, Parse(path)));
@@ -56,12 +67,17 @@ public static class MarkGeometry
         {
             Add(LanternHandle, null, pen);
             Add(LanternRoof, inkFill, pen);
-            Add(LanternGlass, working ? lavender : null, pen);
+            Add(LanternGlass, null, pen);
+            if (working)
+            {
+                group.Children.Add(new GeometryDrawing(amber, null, FlameAt(WorkingFlameScale, WorkingFlameTip)));
+                group.Children.Add(new GeometryDrawing(core, null, FlameAt(CoreScale, CoreTip)));
+            }
             Add(LanternBase, inkFill, pen);
         }
         else
         {
-            Add(Moon, working ? lavender : null, pen);
+            Add(Moon, working ? amber : null, pen);
             if (working)
             {
                 var starPen = new Pen(inkFill, 1) { LineJoin = PenLineJoin.Round };
@@ -95,14 +111,44 @@ public static class MarkGeometry
     public static BitmapSource Render(MarkKind kind, MarkState state, int pixels, Color ink)
     {
         var mark = Build(kind, state, StrokeFor(pixels), ink);
-        if (kind == MarkKind.Lantern)
-        {
-            var scaled = new DrawingGroup { Transform = new ScaleTransform(TrayLanternScale, TrayLanternScale, Grid / 2, Grid / 2) };
-            scaled.Children.Add(mark);
-            scaled.Freeze();
-            mark = scaled;
-        }
-        return RenderDrawing(mark, pixels, tile: false);
+        return RenderDrawing(kind == MarkKind.Lantern ? TrayScaled(mark) : mark, pixels, tile: false);
+    }
+
+    /// <summary>
+    /// The README's "You close the lid" mark: the working lantern as the tray draws it, with a padlock at its lower
+    /// right. A Night ring parts the padlock from the lantern behind it, as the README draws marks on Night.
+    /// </summary>
+    public static BitmapSource RenderLocked(int pixels)
+    {
+        var group = new DrawingGroup();
+        group.Children.Add(TrayScaled(Build(MarkKind.Lantern, MarkState.Live, StrokeFor(pixels), Theme.Moon)));
+        var night = Theme.Brush(Theme.Night);
+        var moon = Theme.Brush(Theme.Moon);
+        var body = new RectangleGeometry(PadlockBody, 1.2, 1.2);
+        body.Freeze();
+        group.Children.Add(new GeometryDrawing(null, RoundPen(Theme.Night, 4.2), Parse(PadlockShackle)));
+        group.Children.Add(new GeometryDrawing(night, RoundPen(Theme.Night, 2.4), body));
+        group.Children.Add(new GeometryDrawing(null, RoundPen(Theme.Moon, 1.5), Parse(PadlockShackle)));
+        group.Children.Add(new GeometryDrawing(moon, null, body));
+        group.Children.Add(new GeometryDrawing(night, null, new EllipseGeometry(PadlockKeyhole, 0.95, 0.95)));
+        group.Freeze();
+        return RenderDrawing(group, pixels, tile: false);
+    }
+
+    /// <summary>The lantern scaled up about the centre to fill a tray slot's height.</summary>
+    private static Drawing TrayScaled(Drawing lantern)
+    {
+        var scaled = new DrawingGroup { Transform = new ScaleTransform(TrayLanternScale, TrayLanternScale, Grid / 2, Grid / 2) };
+        scaled.Children.Add(lantern);
+        scaled.Freeze();
+        return scaled;
+    }
+
+    private static Pen RoundPen(Color colour, double width)
+    {
+        var pen = new Pen(Theme.Brush(colour), width) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        pen.Freeze();
+        return pen;
     }
 
     /// <summary>The app icon: the lantern with its flame on a Night tile with 22% corners.</summary>
@@ -139,6 +185,18 @@ public static class MarkGeometry
     private static Geometry Parse(string path)
     {
         var geometry = Geometry.Parse(path);
+        geometry.Freeze();
+        return geometry;
+    }
+
+    /// <summary>The lantern's flame scaled about its tip, with the tip moved to <paramref name="tipY"/>.</summary>
+    private static Geometry FlameAt(double scale, double tipY)
+    {
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(scale, scale, 12, 10));
+        transform.Children.Add(new TranslateTransform(0, tipY - 10));
+        var geometry = Geometry.Parse(LanternFlame).Clone(); // Parse returns it frozen
+        geometry.Transform = transform;
         geometry.Freeze();
         return geometry;
     }

@@ -140,10 +140,10 @@ public sealed class PanelVisualTests : IDisposable
     }
 
     [Fact]
-    public void The_readme_marks_are_the_tile_and_the_lantern_in_each_state()
+    public void The_readme_marks_are_the_tile_the_lantern_in_each_state_and_the_locked_lantern()
     {
         var paths = Sta.Run(() => AssetRenderer.WriteMarks(_dir));
-        Assert.Equal(["tile.png", "mark-idle.png", "mark-live.png"], paths.Select(Path.GetFileName));
+        Assert.Equal(["tile.png", "mark-idle.png", "mark-live.png", "mark-locked.png"], paths.Select(Path.GetFileName));
         Assert.All(paths, path => Assert.True(new FileInfo(path).Length > 0));
     }
 

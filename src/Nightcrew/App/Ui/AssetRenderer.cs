@@ -49,8 +49,8 @@ public static class AssetRenderer
     }
 
     /// <summary>
-    /// The images the README's HTML pages use: the app tile and the lantern in each state. Writing them from the
-    /// real geometry keeps the README's marks identical to the app's.
+    /// The images the README's HTML pages use: the app tile, the lantern in each state, and the locked lantern for the
+    /// "You close the lid" step. Writing them from the real geometry keeps the README's marks identical to the app's.
     /// </summary>
     public static IReadOnlyList<string> WriteMarks(string directory)
     {
@@ -67,6 +67,7 @@ public static class AssetRenderer
         {
             Write($"mark-{state.ToString().ToLowerInvariant()}.png", MarkGeometry.Render(MarkKind.Lantern, state, 192, Theme.Moon));
         }
+        Write("mark-locked.png", MarkGeometry.RenderLocked(192));
         return written;
     }
 
