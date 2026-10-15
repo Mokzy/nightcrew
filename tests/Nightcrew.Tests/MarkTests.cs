@@ -133,6 +133,23 @@ public sealed class MarkTests
     }
 
     [Fact]
+    public void The_locked_mark_is_the_working_lantern_with_a_padlock_at_its_lower_right()
+    {
+        var (locked, working) = Sta.Run(() => (
+            MarkGeometry.ToBgra(MarkGeometry.RenderLocked(96)),
+            MarkGeometry.ToBgra(MarkGeometry.Render(MarkKind.Lantern, MarkState.Live, 96, Theme.Moon))));
+
+        var flame = At(locked, FlameX, FlameY);
+        var body = At(locked, 84, 84); // grid (21, 21): the padlock's body, clear of the lantern
+        var keyhole = At(locked, 76, 76); // grid (19, 19)
+        Assert.Equal(Theme.Amber, Color.FromRgb(flame.R, flame.G, flame.B));
+        Assert.Equal(Theme.Moon, Color.FromRgb(body.R, body.G, body.B));
+        Assert.Equal(255, body.A);
+        Assert.Equal(Theme.Night, Color.FromRgb(keyhole.R, keyhole.G, keyhole.B));
+        Assert.Equal(0, At(working, 84, 84).A); // the working lantern has nothing there
+    }
+
+    [Fact]
     public void Working_fills_the_moon_and_idle_leaves_it_empty()
     {
         var (working, idle) = Sta.Run(() => (

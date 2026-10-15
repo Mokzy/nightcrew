@@ -24,6 +24,12 @@ public static class MarkGeometry
     internal const string Moon = "M19.5,15 A8.5,8.5 0 1 1 9,4.5 A7.5,7.5 0 0 0 19.5,15 Z";
     internal const string Star = "M18.5,1.8 Q18.5,5.5 22.2,5.5 Q18.5,5.5 18.5,9.2 Q18.5,5.5 14.8,5.5 Q18.5,5.5 18.5,1.8 Z";
 
+    // A padlock at the lantern's lower right, for the README's "You close the lid" step: a shackle over a body with a
+    // keyhole.
+    internal const string PadlockShackle = "M16.6,16.2 V14.6 A2.4,2.4 0 0 1 21.4,14.6 V16.2";
+    private static readonly Rect PadlockBody = new(15.2, 16.2, 7.6, 6.2);
+    private static readonly Point PadlockKeyhole = new(19, 18.9);
+
     /// <summary>Sizes in the app's .ico. The 256 px frame is stored as PNG, the rest as bitmaps.</summary>
     public static IReadOnlyList<int> AppIconSizes { get; } = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 
@@ -105,14 +111,44 @@ public static class MarkGeometry
     public static BitmapSource Render(MarkKind kind, MarkState state, int pixels, Color ink)
     {
         var mark = Build(kind, state, StrokeFor(pixels), ink);
-        if (kind == MarkKind.Lantern)
-        {
-            var scaled = new DrawingGroup { Transform = new ScaleTransform(TrayLanternScale, TrayLanternScale, Grid / 2, Grid / 2) };
-            scaled.Children.Add(mark);
-            scaled.Freeze();
-            mark = scaled;
-        }
-        return RenderDrawing(mark, pixels, tile: false);
+        return RenderDrawing(kind == MarkKind.Lantern ? TrayScaled(mark) : mark, pixels, tile: false);
+    }
+
+    /// <summary>
+    /// The README's "You close the lid" mark: the working lantern as the tray draws it, with a padlock at its lower
+    /// right. A Night ring parts the padlock from the lantern behind it, as the README draws marks on Night.
+    /// </summary>
+    public static BitmapSource RenderLocked(int pixels)
+    {
+        var group = new DrawingGroup();
+        group.Children.Add(TrayScaled(Build(MarkKind.Lantern, MarkState.Live, StrokeFor(pixels), Theme.Moon)));
+        var night = Theme.Brush(Theme.Night);
+        var moon = Theme.Brush(Theme.Moon);
+        var body = new RectangleGeometry(PadlockBody, 1.2, 1.2);
+        body.Freeze();
+        group.Children.Add(new GeometryDrawing(null, RoundPen(Theme.Night, 4.2), Parse(PadlockShackle)));
+        group.Children.Add(new GeometryDrawing(night, RoundPen(Theme.Night, 2.4), body));
+        group.Children.Add(new GeometryDrawing(null, RoundPen(Theme.Moon, 1.5), Parse(PadlockShackle)));
+        group.Children.Add(new GeometryDrawing(moon, null, body));
+        group.Children.Add(new GeometryDrawing(night, null, new EllipseGeometry(PadlockKeyhole, 0.95, 0.95)));
+        group.Freeze();
+        return RenderDrawing(group, pixels, tile: false);
+    }
+
+    /// <summary>The lantern scaled up about the centre to fill a tray slot's height.</summary>
+    private static Drawing TrayScaled(Drawing lantern)
+    {
+        var scaled = new DrawingGroup { Transform = new ScaleTransform(TrayLanternScale, TrayLanternScale, Grid / 2, Grid / 2) };
+        scaled.Children.Add(lantern);
+        scaled.Freeze();
+        return scaled;
+    }
+
+    private static Pen RoundPen(Color colour, double width)
+    {
+        var pen = new Pen(Theme.Brush(colour), width) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        pen.Freeze();
+        return pen;
     }
 
     /// <summary>The app icon: the lantern with its flame on a Night tile with 22% corners.</summary>
