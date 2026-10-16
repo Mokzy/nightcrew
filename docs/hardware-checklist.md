@@ -396,7 +396,7 @@ and start Nightcrew.
 
 **Pass.**
 
-- The second start opens the panel.
+- The second start opens the panel within about a second.
 - `--exit` returns within 10 seconds with exit code 0, and the lantern is
   gone from the tray.
 - With no settings file, the panel opens once on start.

@@ -17,12 +17,9 @@ internal static class Program
         if (parsed.Uninstall) return Uninstall(exePath, log);
         if (parsed.Exit) return ExitRunning();
 
+        // Already running: show its panel instead of doing nothing.
         using var instance = new Mutex(initiallyOwned: false, InstanceSignals.Instance);
-        if (!TakeInstance(instance))
-        {
-            InstanceSignals.Signal(InstanceSignals.ShowPanel); // already running: show its panel instead of doing nothing
-            return 0;
-        }
+        if (!InstanceStart.ShouldRun(() => InstanceSignals.Signal(InstanceSignals.ShowPanel), () => TakeInstance(instance))) return 0;
         try
         {
             RunTray(parsed.DryRun, exePath, log);
