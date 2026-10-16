@@ -121,6 +121,7 @@ internal static class Program
         IBusySignal[] signals =
         [
             new TranscriptSignal(transcripts, settings.TranscriptRoots, settings.IgnorePathContains, grace),
+            new ClaudeSessionSignal(new SessionFileReader(), processes, settings, () => events.Lid, log),
             new AgentTreeSignal(processes, settings),
             gpuSignal,
         ];
