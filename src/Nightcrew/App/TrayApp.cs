@@ -41,18 +41,22 @@ public sealed class TrayApp : ApplicationContext
     private PanelView? _view; // UI thread
     private IReadOnlyList<NamedApp>? _addable; // UI thread: the open Add an app list, or null
     private bool _closed;
+    private volatile bool _closing; // set first when quitting, so no timer or signal starts new work
     private bool _sessionEnding;
+    private readonly (EventWaitHandle Handle, RegisteredWaitHandle Wait)? _showPanelSignal;
+    private readonly (EventWaitHandle Handle, RegisteredWaitHandle Wait)? _exitSignal;
 
     /// <summary>
     /// Subscribes to <paramref name="events"/> but does not own it; the caller disposes it after this. <paramref name="efficiency"/>
     /// is called directly, without the lock, whenever apps must come out of Efficiency mode at once.
     /// <paramref name="wouldSlowNow"/> fills Settings' Add an app list and is called under the lock.
     /// <paramref name="recover"/> puts everything back and restarts Nightcrew when <paramref name="guard"/> says no tick has
-    /// finished for too long; it is called without the lock, which the frozen tick holds.
+    /// finished for too long; it is called without the lock, which the frozen tick holds. On <paramref name="firstRun"/> the
+    /// panel opens once, because Windows hides a new tray icon in the overflow.
     /// </summary>
     public TrayApp(Settings settings, bool dryRun, string exePath, PowerEventsWindow events,
         ActivityMonitor activity, Controller controller, Engine engine, ILog log, IEfficiencyMode efficiency, Func<TimeSpan> idleTime,
-        Func<IReadOnlyList<NamedApp>> wouldSlowNow, FreezeGuard guard, Action<string> recover)
+        Func<IReadOnlyList<NamedApp>> wouldSlowNow, FreezeGuard guard, Action<string> recover, bool firstRun = false)
     {
         _guard = guard;
         _recover = recover;
@@ -130,10 +134,69 @@ public sealed class TrayApp : ApplicationContext
         events.SessionEndCancelled += () => Apply("Session end cancelled", () => _sessionEnding = false);
         events.SessionEnded += () => Guarded("Exit at session end", () =>
         {
+            _closing = true;
             _timer.Dispose(); // the settings were already restored on SessionEnding
             ExitThread();
         });
-        _timer.Change(TimeSpan.Zero, _period);
+
+        // Another start of nightcrew.exe: a second start opens the panel, nightcrew --exit quits.
+        _showPanelSignal = Listen(InstanceSignals.ShowPanel, OpenPanelAtTray);
+        _exitSignal = Listen(InstanceSignals.Exit, Quit);
+        if (firstRun) _ui.Post(_ => OpenPanelAtTray(), null);
+        SafeChange(_timer, TimeSpan.Zero, _period);
+    }
+
+    /// <summary>A named event the running copy owns; each signal runs <paramref name="onUi"/> on the UI thread.</summary>
+    private (EventWaitHandle Handle, RegisteredWaitHandle Wait)? Listen(string name, Action onUi)
+    {
+        try
+        {
+            var handle = new EventWaitHandle(false, EventResetMode.AutoReset, name);
+            var wait = ThreadPool.RegisterWaitForSingleObject(handle, (_, _) => _ui.Post(_ => onUi(), null), null, Timeout.Infinite, executeOnlyOnce: false);
+            return (handle, wait);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Listening for {name} failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static void StopListening((EventWaitHandle Handle, RegisteredWaitHandle Wait)? listener)
+    {
+        if (listener is not { } value) return;
+        value.Wait.Unregister(null);
+        value.Handle.Dispose();
+    }
+
+    /// <summary>UI thread: the main page, near the clock on the primary screen, where the tray is.</summary>
+    private void OpenPanelAtTray()
+    {
+        if (_closed || _closing || _view is null) return;
+        try
+        {
+            ShowPage(settings: false);
+            if (_panel.IsVisible) return;
+            var area = Screen.PrimaryScreen?.WorkingArea ?? SystemInformation.WorkingArea;
+            _panel.ShowNear(new System.Drawing.Point(area.Right - 1, area.Bottom - 1));
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Panel failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Changing a timer after quitting began is a no-op, not an exception on a pool thread.</summary>
+    private static void SafeChange(System.Threading.Timer timer, TimeSpan due, TimeSpan period)
+    {
+        try
+        {
+            timer.Change(due, period);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Quitting or the session ending disposed it.
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -161,7 +224,7 @@ public sealed class TrayApp : ApplicationContext
             var snapshot = _engine.Snapshot;
             // Check for keyboard and mouse input every second, but only while apps are in Efficiency mode.
             var check = snapshot.EfficiencyApps > 0 ? InputCheck : Timeout.InfiniteTimeSpan;
-            _inputTimer.Change(check, check);
+            SafeChange(_inputTimer, check, check);
             _ui.Post(_ => Show(snapshot), null);
         }
         catch (Exception ex)
@@ -177,7 +240,7 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>Its own timer, once a minute, never taking the lock: a tick that hasn't finished for 3 minutes is a freeze.</summary>
     private void Watch()
     {
-        if (_closed || _sessionEnding || !_guard.Frozen) return;
+        if (_closed || _closing || _sessionEnding || !_guard.Frozen) return;
         _recover("no tick finished for 3 minutes");
     }
 
@@ -325,8 +388,8 @@ public sealed class TrayApp : ApplicationContext
     private void CheckInput()
     {
         if (_closed || _idleTime() >= TimeSpan.FromSeconds(2)) return;
-        _inputTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        if (_efficiency.RestoreAll("input") > 0 && !_closed) _timer.Change(TimeSpan.Zero, _period);
+        SafeChange(_inputTimer, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        if (_efficiency.RestoreAll("input") > 0 && !_closed) SafeChange(_timer, TimeSpan.Zero, _period);
     }
 
     /// <summary>The Run key first: if writing it fails, the setting stays as it was and nothing is saved.</summary>
@@ -369,7 +432,7 @@ public sealed class TrayApp : ApplicationContext
     private void Apply(string what, Action change)
     {
         Guarded(what, change);
-        if (!_closed) _timer.Change(TimeSpan.Zero, _period);
+        if (!_closed) SafeChange(_timer, TimeSpan.Zero, _period);
     }
 
     private void Save() => SettingsStore.Save(AppPaths.SettingsFile, _settings);
@@ -390,6 +453,9 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>Stops ticking and puts the owner's power settings back, once.</summary>
     private void Shutdown()
     {
+        _closing = true;
+        StopListening(_showPanelSignal);
+        StopListening(_exitSignal);
         _watch.Dispose();
         _timer.Dispose();
         _inputTimer.Dispose();

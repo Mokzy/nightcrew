@@ -27,6 +27,19 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public void Exit_verb_sets_its_flag()
+    {
+        Assert.Equal(new ParsedArgs(false, false, false, Exit: true), CommandLine.Parse(["--exit"]));
+    }
+
+    [Fact]
+    public void Exit_ignores_case()
+    {
+        Assert.True(CommandLine.Parse(["--EXIT"]).Exit);
+        Assert.False(CommandLine.Parse(["--dry-run"]).Exit);
+    }
+
+    [Fact]
     public void Unknown_arguments_are_ignored()
     {
         Assert.Equal(new ParsedArgs(false, false, true), CommandLine.Parse(["--verbose", "dry-run", "--dry-run", "x"]));

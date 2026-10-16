@@ -15,9 +15,14 @@ internal static class Program
         var exePath = Application.ExecutablePath;
         if (parsed.Watchdog) return Watchdog.Run(log);
         if (parsed.Uninstall) return Uninstall(exePath, log);
+        if (parsed.Exit) return ExitRunning();
 
-        using var instance = new Mutex(initiallyOwned: false, @"Local\Nightcrew.Instance");
-        if (!TakeInstance(instance)) return 0;
+        using var instance = new Mutex(initiallyOwned: false, InstanceSignals.Instance);
+        if (!TakeInstance(instance))
+        {
+            InstanceSignals.Signal(InstanceSignals.ShowPanel); // already running: show its panel instead of doing nothing
+            return 0;
+        }
         try
         {
             RunTray(parsed.DryRun, exePath, log);
@@ -27,6 +32,26 @@ internal static class Program
         {
             instance.ReleaseMutex();
         }
+    }
+
+    /// <summary>
+    /// nightcrew --exit: asks the running copy to quit, as Quit does, and waits up to 10 seconds for it to go. 0 once it
+    /// has gone or wasn't running, 1 if it is still running.
+    /// </summary>
+    private static int ExitRunning()
+    {
+        if (!InstanceSignals.Signal(InstanceSignals.Exit)) return 0;
+        using var instance = new Mutex(initiallyOwned: false, InstanceSignals.Instance);
+        try
+        {
+            if (!instance.WaitOne(TimeSpan.FromSeconds(10))) return 1;
+        }
+        catch (AbandonedMutexException)
+        {
+            // It ended without releasing the mutex; it's gone all the same, and this thread now owns it.
+        }
+        instance.ReleaseMutex();
+        return 0;
     }
 
     /// <summary>False if Nightcrew is already running. Waits briefly because the watchdog holds the mutex while it checks.</summary>
@@ -48,7 +73,7 @@ internal static class Program
     /// </summary>
     private static int Uninstall(string exePath, ILog log)
     {
-        using var instance = new Mutex(initiallyOwned: false, @"Local\Nightcrew.Instance");
+        using var instance = new Mutex(initiallyOwned: false, InstanceSignals.Instance);
         bool owned;
         try { owned = instance.WaitOne(TimeSpan.FromSeconds(5)); }
         catch (AbandonedMutexException) { owned = true; }
@@ -86,7 +111,7 @@ internal static class Program
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        var settings = SettingsStore.Load(AppPaths.SettingsFile);
+        var settings = SettingsStore.Load(AppPaths.SettingsFile, out var firstRun);
         var dryRun = dryRunFlag || settings.DryRun; // the flag is not saved into settings
         log.Info(dryRun ? "Nightcrew started (dry run)" : "Nightcrew started");
 
@@ -141,7 +166,7 @@ internal static class Program
         recover = why => Recovery.Run(why, guard.MayRestart, efficiency, engine, exePath, arguments, log);
 
         using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log, efficiency,
-            () => realPower.IdleTime, coordinator.WouldSlowNow, guard, recover);
+            () => realPower.IdleTime, coordinator.WouldSlowNow, guard, recover, firstRun);
         Application.Run(tray);
     }
 

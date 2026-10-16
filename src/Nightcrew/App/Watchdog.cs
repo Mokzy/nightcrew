@@ -8,7 +8,7 @@ public static class Watchdog
 {
     public static int Run(ILog log)
     {
-        using var instance = new Mutex(initiallyOwned: false, @"Local\Nightcrew.Instance");
+        using var instance = new Mutex(initiallyOwned: false, InstanceSignals.Instance);
         bool owned;
         try { owned = instance.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; }
