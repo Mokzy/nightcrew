@@ -5,9 +5,13 @@ namespace Nightcrew.Platform;
 /// <summary>Reads the real power settings; logs writes instead of making them.</summary>
 public sealed class DryRunPolicy(IPowerPolicy real, ILog log) : IPowerPolicy
 {
-    public PowerValues Read() => real.Read();
+    public Guid ActiveScheme() => real.ActiveScheme();
 
-    public void Write(PowerValues values) => log.Info($"[dry run] would write power settings {values}");
+    public PowerValues Read(Guid scheme) => real.Read(scheme);
+
+    public void Write(Guid scheme, PowerValues values) => log.Info($"[dry run] would write power settings {values}");
+
+    public PowerValues ReadDefaults(Guid scheme) => real.ReadDefaults(scheme);
 
     public bool CanWrite(out string reason) => real.CanWrite(out reason);
 }

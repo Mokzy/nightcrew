@@ -156,26 +156,78 @@ public sealed class RestoreJournalTests : IDisposable
         Assert.Single(_log.Warnings);
     }
 
-    private sealed class FakePolicy(PowerValues values) : IPowerPolicy
+    [Fact]
+    public void Record_names_the_plan_it_armed()
     {
-        public PowerValues Values { get; set; } = values;
-        public int Writes { get; private set; }
-        public bool FailWrites { get; set; }
+        NewJournal().Arm();
 
-        public PowerValues Read() => Values;
+        Assert.Contains(_policy.Active.ToString("D"), File.ReadAllText(RecordPath));
+    }
 
-        public void Write(PowerValues values)
-        {
-            if (FailWrites) throw new InvalidOperationException("PowerWriteACValueIndex failed (5)");
-            Values = values;
-            Writes++;
-        }
+    [Fact]
+    public void Restore_writes_back_to_the_recorded_plan_even_when_another_is_active()
+    {
+        var a = _policy.Active;
+        var other = new PowerValues(2, 2, 300, 300);
+        var b = _policy.AddScheme(other);
+        var journal = NewJournal();
+        journal.Arm();
+        _policy.Activate(b);
 
-        public bool CanWrite(out string reason)
-        {
-            reason = "";
-            return true;
-        }
+        Assert.True(journal.Restore());
+
+        Assert.Equal(Owner, _policy.ValuesOf(a));
+        Assert.Equal(other, _policy.ValuesOf(b));
+        Assert.False(journal.HasRecord);
+    }
+
+    [Fact]
+    public void Arm_after_a_plan_switch_restores_the_old_plan_and_arms_the_new_one()
+    {
+        var a = _policy.Active;
+        var other = new PowerValues(2, 2, 300, 300);
+        var b = _policy.AddScheme(other);
+        var journal = NewJournal();
+        journal.Arm();
+        _policy.Activate(b);
+        Assert.True(journal.SchemeChanged);
+
+        journal.Arm();
+
+        Assert.Equal(Owner, _policy.ValuesOf(a));
+        Assert.Equal(RestoreJournal.ArmValues, _policy.ValuesOf(b));
+        Assert.Equal(other, journal.OwnerValues);
+        Assert.False(journal.SchemeChanged);
+    }
+
+    [Fact]
+    public void Plan_switch_keeps_the_old_record_when_the_old_plan_cannot_be_restored()
+    {
+        var a = _policy.Active;
+        var b = _policy.AddScheme(new PowerValues(2, 2, 300, 300));
+        var journal = NewJournal();
+        journal.Arm();
+        _policy.Activate(b);
+        _policy.FailWritesTo(a);
+
+        Assert.Throws<InvalidOperationException>(journal.Arm);
+
+        Assert.Contains(a.ToString("D"), File.ReadAllText(RecordPath));
+        Assert.Equal(Owner, journal.OwnerValues);
+    }
+
+    [Fact]
+    public void Old_record_without_a_scheme_restores_the_active_plan()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(RecordPath,
+            "{\"OwnerLidAc\":1,\"OwnerLidDc\":1,\"OwnerStandbyAc\":900,\"OwnerStandbyDc\":600," +
+            "\"WrittenLidAc\":0,\"WrittenLidDc\":0,\"WrittenStandbyAc\":0,\"WrittenStandbyDc\":0}");
+        _policy.Values = new PowerValues(0, 0, 0, 0);
+
+        Assert.True(NewJournal().Restore());
+
+        Assert.Equal(Owner, _policy.Values);
     }
 
     private sealed class ListLog : ILog

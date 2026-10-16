@@ -17,6 +17,9 @@ public sealed class RestoreRecord
     [DataMember(IsRequired = true)] public uint WrittenStandbyDc { get; set; }
     [DataMember] public DateTime CreatedUtc { get; set; }
 
+    /// <summary>The power plan (scheme GUID, "D" format) the values belong to; null in a record from v0.2.2 or earlier.</summary>
+    [DataMember(EmitDefaultValue = false)] public string? Scheme { get; set; }
+
     public PowerValues Owner
     {
         get => new(OwnerLidAc, OwnerLidDc, OwnerStandbyAc, OwnerStandbyDc);
@@ -53,35 +56,59 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
         }
     }
 
-    /// <summary>Saves the owner's values once, then writes ArmValues. Throws if reading or writing the policy fails.</summary>
-    public void Arm()
+    /// <summary>True when the record names a power plan that isn't the active one any more. Never throws.</summary>
+    public bool SchemeChanged
     {
-        if (Load(out _) is null)
+        get
         {
-            var owner = policy.Read();
-            var record = new RestoreRecord { Owner = owner, Written = ArmValues, CreatedUtc = DateTime.UtcNow };
-            AtomicFile.WriteAllText(path, Json.Serialize(record));
-            log.Info($"Saved owner power settings {owner}");
+            try
+            {
+                return File.Exists(path) && RecordedScheme(Parse(File.ReadAllText(path))) is { } recorded && recorded != policy.ActiveScheme();
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
-        policy.Write(ArmValues);
     }
 
-    /// <summary>Puts back each field we still own, then deletes the record. False keeps the record for a retry.</summary>
+    /// <summary>
+    /// Saves the owner's values of the active plan once, then writes ArmValues to it. If the record belongs to another
+    /// plan (the plan was switched while armed), that plan is put back first; if putting it back fails, this throws and
+    /// the record stays as it is. Throws if reading or writing the policy fails.
+    /// </summary>
+    public void Arm()
+    {
+        var active = policy.ActiveScheme();
+        var record = Load(out _);
+        if (record is not null && RecordedScheme(record) is { } recorded && recorded != active)
+        {
+            var restored = PutBack(record, recorded);
+            File.Delete(path);
+            log.Info($"Restored power settings {restored} of the previous plan");
+            record = null;
+        }
+        if (record is null)
+        {
+            var owner = policy.Read(active);
+            var saved = new RestoreRecord { Owner = owner, Written = ArmValues, Scheme = active.ToString("D"), CreatedUtc = DateTime.UtcNow };
+            AtomicFile.WriteAllText(path, Json.Serialize(saved));
+            log.Info($"Saved owner power settings {owner}");
+        }
+        policy.Write(active, ArmValues);
+    }
+
+    /// <summary>
+    /// Puts back each field we still own, to the plan the record names (the active plan for an old record), then deletes
+    /// the record. False keeps the record for a retry.
+    /// </summary>
     public bool Restore()
     {
         try
         {
             var record = Load(out var corrupt);
             if (record is null) return !corrupt;
-            var current = policy.Read();
-            var owner = record.Owner;
-            var written = record.Written;
-            var result = new PowerValues(
-                Pick(current.LidAc, written.LidAc, owner.LidAc),
-                Pick(current.LidDc, written.LidDc, owner.LidDc),
-                Pick(current.StandbyAc, written.StandbyAc, owner.StandbyAc),
-                Pick(current.StandbyDc, written.StandbyDc, owner.StandbyDc));
-            if (result != current) policy.Write(result);
+            var result = PutBack(record, RecordedScheme(record) ?? policy.ActiveScheme());
             File.Delete(path);
             log.Info($"Restored power settings {result}");
             return true;
@@ -93,8 +120,25 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
         }
     }
 
+    /// <summary>Writes the owner's values back over every field we still own in the scheme; returns what it holds now.</summary>
+    private PowerValues PutBack(RestoreRecord record, Guid scheme)
+    {
+        var current = policy.Read(scheme);
+        var owner = record.Owner;
+        var written = record.Written;
+        var result = new PowerValues(
+            Pick(current.LidAc, written.LidAc, owner.LidAc),
+            Pick(current.LidDc, written.LidDc, owner.LidDc),
+            Pick(current.StandbyAc, written.StandbyAc, owner.StandbyAc),
+            Pick(current.StandbyDc, written.StandbyDc, owner.StandbyDc));
+        if (result != current) policy.Write(scheme, result);
+        return result;
+    }
+
     // A field the user changed since we armed is theirs; keep it.
     private static uint Pick(uint current, uint written, uint owner) => current == written ? owner : current;
+
+    private static Guid? RecordedScheme(RestoreRecord record) => Guid.TryParse(record.Scheme, out var scheme) ? scheme : null;
 
     private static RestoreRecord Parse(string text) =>
         Json.Deserialize<RestoreRecord?>(text) ?? throw new SerializationException("Restore record is empty.");

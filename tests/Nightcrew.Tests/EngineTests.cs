@@ -77,6 +77,23 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
+    public void A_plan_switch_while_armed_moves_to_the_new_plan()
+    {
+        var a = _policy.Active;
+        var other = new PowerValues(2, 2, 300, 300);
+        var b = _policy.AddScheme(other);
+        ArmWithLidOpen();
+        _policy.Activate(b);
+
+        Tick();
+
+        Assert.Equal(Owner, _policy.ValuesOf(a));
+        Assert.Equal(RestoreJournal.ArmValues, _policy.ValuesOf(b));
+        Assert.Equal(other, _journal.OwnerValues);
+        Assert.Contains(_log.Infos, line => line.Contains("Power plan changed"));
+    }
+
+    [Fact]
     public void Disarm_releases_then_restores_the_owner_values()
     {
         ArmWithLidOpen();
@@ -439,33 +456,6 @@ public sealed class EngineTests : IDisposable
         public bool Busy { get; set; }
 
         public bool Sample(TimeSpan now) => Busy;
-    }
-
-    private sealed class FakePolicy(PowerValues values, List<string> calls) : IPowerPolicy
-    {
-        public const string BlockedReason = "policy blocks lid action AC (5)";
-
-        public PowerValues Values { get; private set; } = values;
-        public bool FailWrites { get; set; }
-        public bool FailReads { get; set; }
-        public bool CanWriteResult { get; set; } = true;
-        public int CanWriteChecks { get; private set; }
-
-        public PowerValues Read() => FailReads ? throw new InvalidOperationException("PowerGetActiveScheme failed (5)") : Values;
-
-        public void Write(PowerValues values)
-        {
-            if (FailWrites) throw new InvalidOperationException("PowerWriteACValueIndex failed (5)");
-            Values = values;
-            calls.Add("Write");
-        }
-
-        public bool CanWrite(out string reason)
-        {
-            CanWriteChecks++;
-            reason = CanWriteResult ? "" : BlockedReason;
-            return CanWriteResult;
-        }
     }
 
     private sealed class FakeKeepAwake(List<string> calls) : IKeepAwake

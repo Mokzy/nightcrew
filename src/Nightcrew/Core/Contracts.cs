@@ -20,12 +20,24 @@ public interface IClock
     DateTime UtcNow { get; }
 }
 
+/// <summary>The lid action and sleep-after values of a power plan (scheme). Every method throws on failure.</summary>
 public interface IPowerPolicy
 {
-    PowerValues Read();
-    /// <summary>Writes all four values to the active scheme, re-activates it and verifies the read-back. Throws on failure.</summary>
-    void Write(PowerValues values);
+    Guid ActiveScheme();
+    PowerValues Read(Guid scheme);
+    /// <summary>
+    /// Writes all four values to the scheme, re-activates it only when it is the active scheme, and verifies the
+    /// read-back. A scheme that isn't active can be written too; Windows applies it when it becomes active.
+    /// </summary>
+    void Write(Guid scheme, PowerValues values);
+    /// <summary>Windows' default values for the scheme (PowerReadACDefaultIndex and PowerReadDCDefaultIndex).</summary>
+    PowerValues ReadDefaults(Guid scheme);
     bool CanWrite(out string reason);
+}
+
+public static class PowerPolicyExtensions
+{
+    public static PowerValues ReadActive(this IPowerPolicy policy) => policy.Read(policy.ActiveScheme());
 }
 
 public interface IKeepAwake

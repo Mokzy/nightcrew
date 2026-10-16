@@ -54,11 +54,12 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
             LogHoldersWhenTheyChange(activity.Holders);
             var source = power.Source;
             var battery = power.BatteryPercent;
-            var ownerLid = (journal.OwnerValues ?? policy.Read()).LidFor(source);
+            var ownerLid = (journal.OwnerValues ?? policy.ReadActive()).LidFor(source);
             var policyAllows = CanWrite(now);
             var backingOff = _armBlockedUntil is { } until && now < until;
             var inputs = new Inputs(activity.Live, Lid, source, battery, power.IdleTime, Paused, policyAllows && !backingOff, ownerLid);
             foreach (var command in controller.Step(inputs, now)) Run(command, now);
+            FollowPlanSwitch();
             efficiency?.Step(controller.Mode, Lid, inputs.IdleTime, ownerLid);
             RetryRestore(now);
 
@@ -84,6 +85,24 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
 
     /// <summary>Releases the keep-awake request and restores the owner's settings (quit, session end, startup).</summary>
     public void RestoreNow() => ReleaseAndRestore(clock.Now);
+
+    /// <summary>
+    /// While armed, a switch to another power plan (by the user or an OEM utility) would leave the new plan sleeping on
+    /// lid close and the old plan on Do nothing for good: put the old plan back and arm the new one.
+    /// </summary>
+    private void FollowPlanSwitch()
+    {
+        if (controller.Mode != Mode.Armed || !journal.SchemeChanged) return;
+        log.Info("Power plan changed while armed; moving to the new plan");
+        try
+        {
+            journal.Arm();
+        }
+        catch (Exception ex)
+        {
+            log.Warn($"Moving to the new power plan failed, record kept: {ex.Message}");
+        }
+    }
 
     /// <summary>One log line whenever the set of holders changes, so the log says why the laptop stays awake.</summary>
     private void LogHoldersWhenTheyChange(IReadOnlyList<Holder> holders)

@@ -3,7 +3,7 @@ using Nightcrew.Core;
 
 namespace Nightcrew.Platform;
 
-/// <summary>Reads and writes the lid action and sleep-after values of the active power scheme.</summary>
+/// <summary>Reads and writes the lid action and sleep-after values of a power scheme (plan).</summary>
 public sealed class PowrProfPolicy : IPowerPolicy
 {
     private const uint ACCESS_AC_POWER_SETTING_INDEX = 0;
@@ -18,20 +18,26 @@ public sealed class PowrProfPolicy : IPowerPolicy
     private static readonly Setting Standby = new("sleep after",
         new Guid("238c9fa8-0aad-41ed-83f4-97be242c8f20"), new Guid("29f6c1db-86da-48c5-9fdb-f2b67b1f44da"));
 
-    public PowerValues Read() => ReadValues(ActiveScheme());
+    public PowerValues Read(Guid scheme) => ReadValues(scheme);
 
-    public void Write(PowerValues values)
+    public void Write(Guid scheme, PowerValues values)
     {
-        var scheme = ActiveScheme();
         WriteIndex(scheme, Lid, ac: true, values.LidAc);
         WriteIndex(scheme, Lid, ac: false, values.LidDc);
         WriteIndex(scheme, Standby, ac: true, values.StandbyAc);
         WriteIndex(scheme, Standby, ac: false, values.StandbyDc);
-        Check(PowerSetActiveScheme(IntPtr.Zero, ref scheme), "PowerSetActiveScheme");
+        // Re-activating applies the new values at once; a plan that isn't active picks them up when it becomes active.
+        if (scheme == ActiveScheme()) Check(PowerSetActiveScheme(IntPtr.Zero, ref scheme), "PowerSetActiveScheme");
         var readBack = ReadValues(scheme);
         if (readBack != values)
             throw new InvalidOperationException($"Power settings read-back mismatch: wrote {values}, read {readBack}");
     }
+
+    public PowerValues ReadDefaults(Guid scheme) => new(
+        ReadDefaultIndex(scheme, Lid, ac: true),
+        ReadDefaultIndex(scheme, Lid, ac: false),
+        ReadDefaultIndex(scheme, Standby, ac: true),
+        ReadDefaultIndex(scheme, Standby, ac: false));
 
     public bool CanWrite(out string reason)
     {
@@ -52,7 +58,7 @@ public sealed class PowrProfPolicy : IPowerPolicy
         return true;
     }
 
-    private static Guid ActiveScheme()
+    public Guid ActiveScheme()
     {
         Check(PowerGetActiveScheme(IntPtr.Zero, out var pointer), "PowerGetActiveScheme");
         try
@@ -80,6 +86,18 @@ public sealed class PowrProfPolicy : IPowerPolicy
             ? PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, out value)
             : PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, out value);
         Check(code, ac ? "PowerReadACValueIndex" : "PowerReadDCValueIndex");
+        return value;
+    }
+
+    private static uint ReadDefaultIndex(Guid scheme, Setting setting, bool ac)
+    {
+        var subgroup = setting.Subgroup;
+        var id = setting.Id;
+        uint value;
+        var code = ac
+            ? PowerReadACDefaultIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, out value)
+            : PowerReadDCDefaultIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, out value);
+        Check(code, ac ? "PowerReadACDefaultIndex" : "PowerReadDCDefaultIndex");
         return value;
     }
 
@@ -115,6 +133,12 @@ public sealed class PowrProfPolicy : IPowerPolicy
 
     [DllImport("powrprof.dll")]
     private static extern uint PowerWriteDCValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subgroupGuid, ref Guid settingGuid, uint value);
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadACDefaultIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subgroupGuid, ref Guid settingGuid, out uint value);
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadDCDefaultIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subgroupGuid, ref Guid settingGuid, out uint value);
 
     [DllImport("powrprof.dll")]
     private static extern uint PowerSettingAccessCheckEx(uint accessFlags, ref Guid powerGuid, uint accessType);

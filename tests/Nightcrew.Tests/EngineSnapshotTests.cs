@@ -11,7 +11,7 @@ public sealed class EngineSnapshotTests : IDisposable
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "nightcrew-tests-" + Guid.NewGuid().ToString("N"));
     private readonly FakeClock _clock = new();
     private readonly Signal _signal = new();
-    private readonly Policy _policy = new(Owner);
+    private readonly FakePolicy _policy = new(Owner);
     private readonly KeepAwake _keepAwake = new();
     private readonly Power _power = new();
     private readonly Log _log = new();
@@ -63,7 +63,7 @@ public sealed class EngineSnapshotTests : IDisposable
     [Fact]
     public void A_policy_block_is_a_warning()
     {
-        _policy.Allowed = false;
+        _policy.CanWriteResult = false;
         _signal.Busy = true;
         Tick();
 
@@ -137,27 +137,6 @@ public sealed class EngineSnapshotTests : IDisposable
         public IReadOnlyList<Holder> Holders => [new Holder("Claude Code", Detail)];
 
         public bool Sample(TimeSpan now) => Busy;
-    }
-
-    private sealed class Policy(PowerValues values) : IPowerPolicy
-    {
-        public PowerValues Values { get; private set; } = values;
-        public bool Allowed { get; set; } = true;
-        public bool FailWrites { get; set; }
-
-        public PowerValues Read() => Values;
-
-        public void Write(PowerValues values)
-        {
-            if (FailWrites) throw new InvalidOperationException("PowerWriteACValueIndex failed (5)");
-            Values = values;
-        }
-
-        public bool CanWrite(out string reason)
-        {
-            reason = Allowed ? "" : "policy blocks lid action AC (1260)";
-            return Allowed;
-        }
     }
 
     private sealed class KeepAwake : IKeepAwake
