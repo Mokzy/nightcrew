@@ -7,7 +7,8 @@ namespace Nightcrew.Platform;
 /// Windows' Efficiency mode as Task Manager applies it: power throttling (EcoQoS) plus idle priority. Every change is
 /// written to a record first, so a later run, or the watchdog, can put it back after a crash. A process that already
 /// made its own choice (a low priority, or any throttling setting) is left alone, and on the way back a priority
-/// someone changed meanwhile is kept.
+/// someone changed meanwhile is kept. Windows gives a process started by an idle parent the idle priority (but not the
+/// throttling), so what a slowed app starts while slowed is recorded, or found on the way back, and put back too.
 /// </summary>
 public sealed class EfficiencyMode : IEfficiencyMode
 {
@@ -55,14 +56,19 @@ public sealed class EfficiencyMode : IEfficiencyMode
     private readonly object _lock = new();
     private readonly string _path;
     private readonly ILog _log;
+    private readonly IProcessTable _table;
     private readonly List<EfficiencyEntry> _entries;
     private int _generation;
 
-    /// <summary>Loads what an earlier run left in the record, so <see cref="RestoreAll"/> puts that back too.</summary>
-    public EfficiencyMode(string path, ILog log)
+    /// <summary>
+    /// Loads what an earlier run left in the record, so <see cref="RestoreAll"/> puts that back too. <paramref name="table"/>
+    /// lists processes for the sweep that finds processes a slowed app started; the real process list by default.
+    /// </summary>
+    public EfficiencyMode(string path, ILog log, IProcessTable? table = null)
     {
         _path = path;
         _log = log;
+        _table = table ?? new ToolhelpProcessTable();
         _entries = Load();
     }
 
@@ -83,6 +89,10 @@ public sealed class EfficiencyMode : IEfficiencyMode
             if (generation != _generation) return ApplyResult.Stale;
             var root = family.Root;
             var known = new HashSet<ProcessRef>(_entries.Select(entry => entry.Process));
+            var recorded = _entries.Where(entry => entry.Root == root).ToList();
+            var appliedSince = recorded.Where(entry => entry.AppliedUtcTicks > 0).Select(entry => entry.AppliedUtcTicks).DefaultIfEmpty(0).Min();
+            var rootPriority = (recorded.FirstOrDefault(entry => entry.Process == root) ?? recorded.FirstOrDefault())?.OriginalPriority;
+            var now = DateTime.UtcNow.Ticks;
             var pending = new List<(EfficiencyEntry Entry, IntPtr Handle)>();
             try
             {
@@ -96,20 +106,38 @@ public sealed class EfficiencyMode : IEfficiencyMode
                         RestoreFamily(root);
                         return ApplyResult.Denied;
                     }
-                    if (!StartedAt(handle, process.StartUtc) || MadeItsOwnChoice(handle, out var priority))
+                    if (!StartedAt(handle, process.StartUtc))
                     {
                         CloseHandle(handle);
                         continue;
                     }
-                    pending.Add((new EfficiencyEntry
+                    var entry = new EfficiencyEntry
                     {
                         Pid = process.Pid,
                         StartUtcTicks = process.StartUtc.Ticks,
-                        OriginalPriority = priority,
                         RootPid = root.Pid,
                         RootStartUtcTicks = root.StartUtc.Ticks,
                         Name = family.DisplayName,
-                    }, handle));
+                        AppliedUtcTicks = now,
+                    };
+                    if (MadeItsOwnChoice(handle, out var priority))
+                    {
+                        // Idle, and started after we slowed its family: Windows passed the idle priority down. Record it
+                        // with the family's own priority, so it comes back with the family, even after a crash.
+                        if (priority == IdlePriority && appliedSince > 0 && process.StartUtc.Ticks > appliedSince && rootPriority is { } original)
+                        {
+                            entry.OriginalPriority = original;
+                            entry.Inherited = true;
+                            pending.Add((entry, handle));
+                        }
+                        else
+                        {
+                            CloseHandle(handle);
+                        }
+                        continue;
+                    }
+                    entry.OriginalPriority = priority;
+                    pending.Add((entry, handle));
                 }
                 var wasOn = _entries.Any(entry => entry.Root == root);
                 if (pending.Count == 0) return wasOn ? ApplyResult.Applied : ApplyResult.Unchanged;
@@ -120,8 +148,9 @@ public sealed class EfficiencyMode : IEfficiencyMode
                     _entries.RemoveAll(entry => pending.Any(item => item.Entry == entry));
                     return ApplyResult.Unchanged;
                 }
-                foreach (var (_, handle) in pending)
+                foreach (var (entry, handle) in pending)
                 {
+                    if (entry.Inherited) continue; // already idle, and not ours to slow further
                     var state = new ThrottlingState { Version = ThrottlingVersion, ControlMask = ExecutionSpeed, StateMask = ExecutionSpeed };
                     SetProcessInformation(handle, ProcessPowerThrottling, ref state, StateSize);
                     if (SetPriorityClass(handle, IdlePriority)) continue;
@@ -155,7 +184,7 @@ public sealed class EfficiencyMode : IEfficiencyMode
         {
             _generation++;
             var apps = _entries.Select(entry => entry.Root).Distinct().Count();
-            foreach (var entry in _entries) Put(entry);
+            foreach (var entry in _entries.Concat(Sweep(_entries))) Put(entry);
             _entries.Clear();
             Save();
             if (apps > 0) _log.Info($"Efficiency mode off for {apps} {(apps == 1 ? "app" : "apps")}: {reason}");
@@ -172,9 +201,77 @@ public sealed class EfficiencyMode : IEfficiencyMode
     {
         var family = _entries.Where(entry => entry.Root == root).ToList();
         if (family.Count == 0) return;
-        foreach (var entry in family) Put(entry);
+        foreach (var entry in family.Concat(Sweep(family))) Put(entry);
         _entries.RemoveAll(family.Contains);
         Save();
+    }
+
+    /// <summary>
+    /// Processes at idle priority that a recorded process started after it was slowed, and what those started in turn:
+    /// Windows passed the idle priority down, so they come back with the family. Each one gets the priority of the
+    /// recorded process it descends from. A live parent must still be the recorded process, not a reused pid.
+    /// Never throws; a process list that can't be read finds nothing.
+    /// </summary>
+    private List<EfficiencyEntry> Sweep(IReadOnlyCollection<EfficiencyEntry> recorded)
+    {
+        var found = new List<EfficiencyEntry>();
+        if (recorded.Count == 0) return found;
+        IReadOnlyList<ProcessEntry> processes;
+        try
+        {
+            processes = _table.List();
+        }
+        catch (Exception)
+        {
+            return found;
+        }
+
+        var seen = new HashSet<int>(recorded.Select(entry => entry.Pid)) { OwnPid };
+        var parents = recorded.ToList();
+        while (parents.Count > 0)
+        {
+            var next = new List<EfficiencyEntry>();
+            foreach (var process in processes)
+            {
+                if (seen.Contains(process.Pid)) continue;
+                var parent = parents.FirstOrDefault(entry => entry.Pid == process.ParentPid);
+                if (parent is null || !_table.TryGetTimes(process.Pid, out var start, out _)) continue;
+                var since = parent.AppliedUtcTicks > 0 ? parent.AppliedUtcTicks : parent.StartUtcTicks;
+                if (start.Ticks <= since) continue;
+                if (_table.TryGetTimes(parent.Pid, out var parentStart, out _) && parentStart.Ticks != parent.StartUtcTicks) continue;
+                if (PriorityOf(process.Pid, start) != IdlePriority) continue;
+                seen.Add(process.Pid);
+                next.Add(new EfficiencyEntry
+                {
+                    Pid = process.Pid,
+                    StartUtcTicks = start.Ticks,
+                    OriginalPriority = parent.OriginalPriority,
+                    RootPid = parent.RootPid,
+                    RootStartUtcTicks = parent.RootStartUtcTicks,
+                    Name = parent.Name,
+                    AppliedUtcTicks = parent.AppliedUtcTicks,
+                    Inherited = true,
+                });
+            }
+            found.AddRange(next);
+            parents = next;
+        }
+        return found;
+    }
+
+    /// <summary>The priority class of the process that started at <paramref name="startUtc"/>; 0 if it can't be read.</summary>
+    private static uint PriorityOf(int pid, DateTime startUtc)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) return 0;
+        try
+        {
+            return StartedAt(handle, startUtc) ? GetPriorityClass(handle) : 0;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
     }
 
     /// <summary>Clears throttling that's still on, and puts the priority back if it's still idle.</summary>

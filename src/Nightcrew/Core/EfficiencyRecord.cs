@@ -13,6 +13,15 @@ public sealed class EfficiencyEntry
     [DataMember(IsRequired = true)] public long RootStartUtcTicks { get; set; }
     [DataMember] public string Name { get; set; } = "";
 
+    /// <summary>When Nightcrew put this process into Efficiency mode (UTC ticks); 0 in a record from v0.2.2 or earlier.</summary>
+    [DataMember(EmitDefaultValue = false)] public long AppliedUtcTicks { get; set; }
+
+    /// <summary>
+    /// Started by a slowed process while it was slowed, so Windows gave it the idle priority: Nightcrew didn't slow it,
+    /// but puts its priority back with the rest of the family.
+    /// </summary>
+    [DataMember(EmitDefaultValue = false)] public bool Inherited { get; set; }
+
     public ProcessRef Process => new(Pid, new DateTime(StartUtcTicks, DateTimeKind.Utc));
 
     public ProcessRef Root => new(RootPid, new DateTime(RootStartUtcTicks, DateTimeKind.Utc));

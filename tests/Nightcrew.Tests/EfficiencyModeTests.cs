@@ -86,6 +86,100 @@ public sealed class EfficiencyModeTests : IDisposable
         return (state.ControlMask, state.StateMask);
     }
 
+    /// <summary>A parent at normal priority that starts a second ping about two seconds in, after the test has slowed it.</summary>
+    private (Process Process, ProcessRef Ref) StartParent()
+    {
+        var parent = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & ping -n 30 127.0.0.1 >nul")
+            { UseShellExecute = false, CreateNoWindow = true })!;
+        _children.Add(parent);
+        parent.PriorityClass = ProcessPriorityClass.Normal;
+        Assert.True(new ToolhelpProcessTable().TryGetTimes(parent.Id, out var start, out _));
+        return (parent, new ProcessRef(parent.Id, start));
+    }
+
+    /// <summary>The parent's ping that started after <paramref name="afterUtc"/>; waits up to 10 seconds for it.</summary>
+    private (Process Process, ProcessRef Ref) WaitForLateChild(Process parent, DateTime afterUtc)
+    {
+        var table = new ToolhelpProcessTable();
+        for (var tries = 0; tries < 100; tries++)
+        {
+            foreach (var entry in table.List().Where(entry => entry.ParentPid == parent.Id && entry.Name == "ping"))
+            {
+                if (!table.TryGetTimes(entry.Pid, out var start, out _) || start <= afterUtc) continue;
+                var child = Process.GetProcessById(entry.Pid);
+                _children.Add(child);
+                return (child, new ProcessRef(entry.Pid, start));
+            }
+            Thread.Sleep(100);
+        }
+        throw new InvalidOperationException("The parent never started its second ping.");
+    }
+
+    [Fact]
+    public void A_child_started_while_its_parent_is_slowed_is_recorded_and_put_back()
+    {
+        var (parent, parentRef) = StartParent();
+        var mode = Create();
+        Assert.Equal(ApplyResult.Applied, mode.Apply(Family(parentRef), mode.Generation));
+        var appliedAt = DateTime.UtcNow; // only a ping started after this surely started from a slowed parent
+        var (child, childRef) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child)); // Windows passed the parent's priority down
+        Assert.False(ThrottledOf(child));                           // but not the power throttling
+
+        mode.Apply(Family(parentRef, childRef), mode.Generation);
+
+        var record = Json.Deserialize<EfficiencyRecord>(File.ReadAllText(RecordPath));
+        Assert.Contains(record.Entries, entry => entry.Process == childRef && entry.Inherited && entry.OriginalPriority == 0x20u);
+        mode.RestoreAll("test");
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(child));
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(parent));
+        Assert.False(ThrottledOf(child));
+    }
+
+    [Fact]
+    public void RestoreAll_sweeps_an_idle_child_that_was_never_in_a_family()
+    {
+        var (parent, parentRef) = StartParent();
+        var mode = Create();
+        mode.Apply(Family(parentRef), mode.Generation);
+        var appliedAt = DateTime.UtcNow;
+        var (child, _) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child));
+
+        mode.RestoreAll("test");
+
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(child));
+        Assert.False(ThrottledOf(child));
+    }
+
+    [Fact]
+    public void A_process_that_was_idle_before_efficiency_mode_is_left_alone_by_the_sweep()
+    {
+        var (bystander, _) = StartChild();
+        bystander.PriorityClass = ProcessPriorityClass.Idle;
+        var (_, parentRef) = StartParent();
+        var mode = Create();
+        mode.Apply(Family(parentRef), mode.Generation);
+
+        mode.RestoreAll("test");
+
+        Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(bystander));
+    }
+
+    [Fact]
+    public void The_watchdog_sweep_works_from_the_record_alone()
+    {
+        var (parent, parentRef) = StartParent();
+        Create().Apply(Family(parentRef), 0); // as if Nightcrew then crashed
+        var appliedAt = DateTime.UtcNow;
+        var (child, _) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child));
+
+        Create().RestoreAll("watchdog");
+
+        Assert.Equal(ProcessPriorityClass.Normal, PriorityOf(child));
+    }
+
     [Fact]
     public void A_process_with_any_throttling_choice_of_its_own_is_left_alone()
     {
