@@ -27,8 +27,8 @@ normally would.
 
 1. Download `nightcrew.exe` from [Releases](../../releases/latest).
 2. Put it somewhere it can stay, such as `%LOCALAPPDATA%\Programs\Nightcrew`,
-   and run it. A lantern appears in the tray, and Nightcrew starts with
-   Windows from then on.
+   and run it. A lantern appears in the tray, the panel opens once so you can
+   find it, and Nightcrew starts with Windows from then on.
 
 The exe isn't code-signed, so the first run shows "Windows protected your PC".
 Click **More info**, then **Run anyway**. With Smart App Control on, Windows
@@ -41,10 +41,13 @@ build attestation for checking the download.
 
 1. **An agent starts working.** Every 10 seconds Nightcrew looks for a Claude
    Code or Codex session that's growing, a build or script one of them
-   started, or heavy GPU use. The lantern lights up.
-2. **You close the lid.** The laptop keeps running and locks itself. Nightcrew
-   has saved your power settings, then set the lid to Do nothing and the sleep
-   timer to Never.
+   started, or heavy GPU use. For Claude Code it also reads the status in
+   `~\.claude\sessions\<pid>.json` (busy, idle or waiting), so a long, quiet
+   command still counts. That's the only thing it opens in `~\.claude`, and
+   Nightcrew has no network access. The lantern lights up.
+2. **You close the lid.** The laptop keeps running and locks itself, unless
+   your lid action is Do nothing. Nightcrew has saved your power settings, then
+   set the lid to Do nothing and the sleep timer to Never.
 3. **Other apps ease off.** Five minutes later, apps the agents don't need go
    into Efficiency mode. Agents, what they're connected to, terminals,
    editors, browsers with a Claude or Codex connector and games are left
@@ -74,8 +77,12 @@ what happens when the work is done.
   Nightcrew can't detect on its own.
 - **Pause** hands the lid back to Windows until you resume.
 - **Settings**, or right-click the lantern: battery floor, lid-closed limit,
-  lock on lid close, start at login, Efficiency mode while away, and the tray
-  mark.
+  lock on lid close, stay awake for approvals, start at login, Efficiency mode
+  while away, and the tray mark.
+- **Stay awake for approvals**: with the lid closed, Claude Code waiting for
+  your approval or answer counts as work, so you can answer from your phone.
+  Claude Code only. With the lid open, Windows' own sleep timer applies.
+- Starting `nightcrew.exe` again opens the panel.
 - If an app keeps misbehaving after you've been away, add it under **Keep at
   full speed** in Settings.
 
@@ -83,8 +90,6 @@ what happens when the work is done.
 
 ## Good to know
 
-- Switching power plans while an agent works leaves the old plan on Do nothing.
-  Switch before or after.
 - A game or video that keeps the GPU busy counts as work.
 - In a bag, the laptop loses your Wi-Fi. Set your phone's hotspot to
   **Connect automatically** (Settings > Network & internet > Wi-Fi > Manage
@@ -127,12 +132,20 @@ anything, run `nightcrew --dry-run` and read the log.
 | `EfficiencyWhileAway` | true | Put apps the agents don't need into Efficiency mode while you're away |
 | `LeaveAlone` | none | Process names never put into Efficiency mode (Settings > Keep at full speed) |
 | `ConnectorHostNames` | `chrome-native-host`, `extension-host` | Browser connector helpers; their browser is left alone |
+| `StayAwakeForApprovals` | true | With the lid closed, a Claude Code session waiting for you counts as work |
+| `ClaudeSessionsDir` | `%USERPROFILE%\.claude\sessions` | Where Claude Code keeps its session status files |
 
 </details>
 
+## Update
+
+Run `.\nightcrew.exe --exit` in its folder, which quits Nightcrew and puts
+your settings back. Replace the exe with the new one, then start it.
+
 ## Uninstall
 
-Quit Nightcrew from the tray, then run `.\nightcrew.exe --uninstall` in its
+Quit Nightcrew from the tray (or run `.\nightcrew.exe --exit`), then run
+`.\nightcrew.exe --uninstall` in its
 folder. That puts your settings back, takes any app out of Efficiency mode,
 and removes the startup entry and the watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
 the settings and log gone too.

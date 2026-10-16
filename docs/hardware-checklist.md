@@ -96,8 +96,9 @@ works.
 
 **Pass.**
 
-- While the agent works, LIDACTION and STANDBYIDLE are `0x00000000` on AC and
-  DC, and `restore.json` exists.
+- While the agent works, LIDACTION is `0x00000000` on AC and DC, STANDBYIDLE
+  is `0x00000000` on AC and `0x00007e90` (9 hours: the lid-closed limit plus
+  an hour) on DC, and `restore.json` exists.
 - `powercfg /requests` lists `nightcrew.exe` under SYSTEM and EXECUTION.
 - After the 6 minutes, the settings check shows your values again, and
   `restore.json` is gone.
@@ -126,7 +127,10 @@ events.
 ## 4. Lid closed on battery, 90 minutes
 
 This proves the battery "Sleep after" override. Without it, Windows would
-sleep after your DC STANDBYIDLE value.
+sleep after your DC STANDBYIDLE value. Run it again for v0.3.0: the override
+on battery is now 9 hours instead of Never, and on Modern Standby Windows ends
+keep-awake requests 5 minutes after that timer, so this checks nothing ends
+early.
 
 **Do.** Charge to at least 80% so that the 20% battery floor doesn't trigger,
 then unplug. Leave **Lock when lid closes** off. Start the heartbeat and a
@@ -214,7 +218,7 @@ the heartbeat.
 **Do.** Start Nightcrew normally. Check that the watchdog task exists with
 `schtasks /Query /TN "Nightcrew Watchdog"`. Keep the lid open and the laptop
 plugged in. Start an agent task and wait until the settings check shows
-`0x00000000`. In Task Manager > Details, end `nightcrew.exe` and note the
+LIDACTION `0x00000000`. In Task Manager > Details, end `nightcrew.exe` and note the
 time. Afterwards, start Nightcrew again.
 
 **Look at.** The settings check once a minute, `restore.json`, and
@@ -282,7 +286,7 @@ afterwards.
 ## 11. Uninstall
 
 **Do.** Start Nightcrew normally. Start an agent task and wait until the
-settings check shows `0x00000000`. In Task Manager, end `nightcrew.exe`.
+settings check shows LIDACTION `0x00000000`. In Task Manager, end `nightcrew.exe`.
 Right away, before the watchdog's next run, run `.\nightcrew.exe --uninstall`
 from the exe's folder.
 
@@ -300,6 +304,105 @@ Also look at the settings check and `restore.json`.
 - Both queries report that the value or task can't be found.
 - The settings check shows your values.
 - `restore.json` and `efficiency.json` are gone.
+
+## 12. Power plan switch while armed
+
+**Do.** Run `powercfg /list` and note your active plan and one other. Start
+Nightcrew normally. Plug the laptop in, keep the lid open and start a long
+agent task with N = 1. When the log shows the arm line, switch to the other
+plan with `powercfg /setactive <its GUID>`. Wait a minute, then switch back.
+When the task ends, wait 6 minutes.
+
+**Look at.** The log, and the settings check for both plans: replace
+`SCHEME_CURRENT` with each plan's GUID.
+
+**Pass.**
+
+- After each switch, within about 10 seconds, the log shows `Power plan
+  changed while armed; moving to the new plan`.
+- While armed, the active plan shows LIDACTION `0x00000000`.
+- After the 6 minutes, both plans show your values again, and `restore.json`
+  is gone.
+
+## 13. Docked, lid action Do nothing
+
+**Do.** Set your lid action to **Do nothing** while plugged in, and write the
+four values down again. Connect an external screen, keyboard and mouse. Start
+Nightcrew normally. Start a long agent task with N = 1, close the lid and keep
+working on the external screen. When the task ends, wait 6 minutes. Then set
+your lid action back to **Sleep**.
+
+**Look at.** The screen, the log and the settings check.
+
+**Pass.**
+
+- The PC doesn't lock when you close the lid. The log has no `Lock` line.
+- After the 6 minutes, the settings check shows your Do nothing values.
+
+## 14. A quiet command
+
+**Do.** Start Nightcrew normally and the heartbeat. Plug the laptop in. Ask
+Claude Code to run `powershell -NoProfile -Command 'Start-Sleep -Seconds 900'`
+with a 20-minute timeout and then reply "done". Close the lid as soon as the
+command starts. Come back after 25 minutes.
+
+**Look at.** The heartbeat, the log and Claude Code's reply.
+
+**Pass.**
+
+- There's no heartbeat gap until after Claude Code replied "done". The command
+  uses no CPU and the transcript doesn't grow, so only Claude Code's own
+  status (`claude-status` in the log) keeps the laptop awake.
+- About 5 minutes after the reply, the log shows the disarm line.
+
+## 15. Approvals
+
+**Do.** Start Nightcrew normally and the heartbeat. Plug the laptop in. In
+Settings, check that **Stay awake for approvals** is on. Ask Claude Code to do
+something that needs your permission, such as writing a file outside the
+project, so it waits for you. Then try three cases, each for 15 minutes:
+
+1. Close the lid.
+2. Open the lid and don't touch the laptop.
+3. Turn **Stay awake for approvals** off and close the lid.
+
+Answer the prompt after case 3 and turn the setting back on.
+
+**Look at.** The heartbeat and the log.
+
+**Pass.**
+
+- Case 1: no heartbeat gap, and the log keeps the arm.
+- Case 2: about 5 minutes after you opened the lid, the log shows the disarm
+  line, and Windows' own sleep timer applies.
+- Case 3: about 5 minutes after the setting went off, the log shows the disarm
+  line, and the laptop then follows your lid action.
+
+## 16. Usage limit (optional)
+
+**Do.** Hit a Claude Code usage limit in a session. While it waits for the
+reset, look at its file in `%USERPROFILE%\.claude\sessions`.
+
+**Pass.** The `status` field is `idle`, so the wait doesn't count as work.
+
+## 17. Second start and --exit
+
+**Do.** Start Nightcrew normally. Run `nightcrew.exe` again from its folder.
+Then run `.\nightcrew.exe --exit` in a terminal and note how long it takes.
+Then rename `%LOCALAPPDATA%\Nightcrew\settings.json` to `settings.old.json`
+and start Nightcrew.
+
+**Look at.** The screen, the tray and `$LASTEXITCODE`.
+
+**Pass.**
+
+- The second start opens the panel.
+- `--exit` returns within 10 seconds with exit code 0, and the lantern is
+  gone from the tray.
+- With no settings file, the panel opens once on start.
+
+Afterwards, quit Nightcrew, delete the new settings.json, and rename
+`settings.old.json` back.
 
 When you're done, set your lid action back to what you normally use. To keep
 using Nightcrew, run `nightcrew.exe` again.
