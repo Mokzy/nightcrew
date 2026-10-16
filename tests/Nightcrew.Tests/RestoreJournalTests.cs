@@ -124,6 +124,8 @@ public sealed class RestoreJournalTests : IDisposable
     [InlineData("{ not json")]
     [InlineData("")]
     [InlineData("{}")]
+    [InlineData("\0\0\0\0\0\0\0\0")]
+    [InlineData("{\"OwnerLidAc\":\"x\"}")]
     public void Corrupt_record_is_set_aside_and_restore_fails(string text)
     {
         Directory.CreateDirectory(_dir);

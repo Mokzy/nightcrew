@@ -46,9 +46,9 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
             {
                 return File.Exists(path) ? Parse(File.ReadAllText(path)).Owner : null;
             }
-            catch (Exception ex) when (ex is SerializationException or IOException or UnauthorizedAccessException)
+            catch (Exception)
             {
-                return null;
+                return null; // read every tick: a damaged or locked record must never stop the tick
             }
         }
     }
@@ -99,16 +99,21 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
     private static RestoreRecord Parse(string text) =>
         Json.Deserialize<RestoreRecord?>(text) ?? throw new SerializationException("Restore record is empty.");
 
-    /// <summary>Null when there is no record; a corrupt record is renamed to .corrupt and also gives null.</summary>
+    /// <summary>
+    /// Null when there is no record; a corrupt record is renamed to .corrupt and also gives null. Any failure to parse
+    /// counts as corrupt (a power cut can leave zeros, which throw XmlException); a file that can't be read, such as a
+    /// locked one, throws as before and is left where it is.
+    /// </summary>
     private RestoreRecord? Load(out bool corrupt)
     {
         corrupt = false;
         if (!File.Exists(path)) return null;
+        var text = File.ReadAllText(path);
         try
         {
-            return Parse(File.ReadAllText(path));
+            return Parse(text);
         }
-        catch (SerializationException ex)
+        catch (Exception ex) when (ex is not IOException and not UnauthorizedAccessException)
         {
             corrupt = true;
             var aside = path + ".corrupt";

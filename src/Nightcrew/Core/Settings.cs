@@ -31,8 +31,47 @@ public sealed class Settings
 
     [DataMember] public string[] ConnectorHostNames { get; set; } = [];
 
+    /// <summary>With the lid closed, a Claude Code session waiting for your approval or answer counts as work.</summary>
+    [DataMember] public bool StayAwakeForApprovals { get; set; }
+
+    /// <summary>The folder where Claude Code keeps one small status file per running session.</summary>
+    [DataMember] public string ClaudeSessionsDir { get; set; } = "";
+
     [OnDeserializing]
     private void OnDeserializing(StreamingContext context) => ApplyDefaults();
+
+    /// <summary>
+    /// A hand-edited file can hold nulls and numbers that would stop every tick: nulls get their defaults and numbers
+    /// are clamped into a range that works.
+    /// </summary>
+    [OnDeserialized]
+    private void OnDeserialized(StreamingContext context)
+    {
+        var defaults = new Settings();
+        TranscriptRoots ??= defaults.TranscriptRoots;
+        IgnorePathContains ??= defaults.IgnorePathContains;
+        AgentProcessNames ??= defaults.AgentProcessNames;
+        SelfCpuAgentNames ??= defaults.SelfCpuAgentNames;
+        LeaveAlone ??= defaults.LeaveAlone;
+        LeaveAloneLabels ??= defaults.LeaveAloneLabels;
+        ConnectorHostNames ??= defaults.ConnectorHostNames;
+        ClaudeSessionsDir ??= defaults.ClaudeSessionsDir;
+        Mark = MarkKinds.Name(MarkKinds.Parse(Mark));
+
+        GraceMinutes = Clamp(GraceMinutes, 1, 60);
+        AwayMinutes = Clamp(AwayMinutes, 1, 60);
+        SampleSeconds = Clamp(SampleSeconds, 1, 60);
+        GpuPercent = Clamp(GpuPercent, 5, 100);
+        ToolCpuPercent = Clamp(ToolCpuPercent, 1, 100);
+        SelfCpuPercent = Clamp(SelfCpuPercent, 0.5, 100);
+        BatteryFloorPercent = Clamp(BatteryFloorPercent, 0, 90);
+        LidClosedCapHours = Clamp(LidClosedCapHours, 0, 48);
+    }
+
+    private static int Clamp(int value, int low, int high) => Math.Min(Math.Max(value, low), high);
+
+    private static double Clamp(double value, double low, double high) =>
+        double.IsNaN(value) ? low : Math.Min(Math.Max(value, low), high);
 
     private void ApplyDefaults()
     {
@@ -56,5 +95,7 @@ public sealed class Settings
         LeaveAlone = [];
         LeaveAloneLabels = [];
         ConnectorHostNames = ["chrome-native-host", "extension-host"];
+        StayAwakeForApprovals = true;
+        ClaudeSessionsDir = @"%USERPROFILE%\.claude\sessions";
     }
 }
