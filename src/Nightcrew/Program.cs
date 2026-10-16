@@ -78,6 +78,12 @@ internal static class Program
 
     private static void RunTray(bool dryRunFlag, string exePath, ILog log)
     {
+        // Crashes on any thread go through recovery once it's wired below; before that there is nothing armed to undo.
+        Action<string>? recover = null;
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => Crashed(e.Exception, recover, log);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Crashed(e.ExceptionObject as Exception, recover, log);
+
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         var settings = SettingsStore.Load(AppPaths.SettingsFile);
@@ -130,9 +136,27 @@ internal static class Program
         var coordinator = new EfficiencyCoordinator(efficiency, new EfficiencySource(processes), settings, () => gpuSignal.BusyPids, log);
         var engine = new Engine(activity, controller, journal, policy, keepAwake, power, log, clock, coordinator);
 
+        var guard = new FreezeGuard(clock, TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(10));
+        var arguments = dryRunFlag ? "--dry-run" : ""; // a dry run restarts as a dry run
+        recover = why => Recovery.Run(why, guard.MayRestart, efficiency, engine, exePath, arguments, log);
+
         using var tray = new TrayApp(settings, dryRun, exePath, events, activity, controller, engine, log, efficiency,
-            () => realPower.IdleTime, coordinator.WouldSlowNow);
+            () => realPower.IdleTime, coordinator.WouldSlowNow, guard, recover);
         Application.Run(tray);
+    }
+
+    /// <summary>An exception nothing else caught: put everything back and restart, or, before that's possible, log and exit.</summary>
+    private static void Crashed(Exception? exception, Action<string>? recover, ILog log)
+    {
+        var why = "unhandled exception: " + (exception?.Message ?? "unknown");
+        if (recover is not null)
+        {
+            recover(why);
+            return;
+        }
+        try { log.Warn(why); }
+        catch (Exception) { }
+        Environment.Exit(3);
     }
 
     /// <summary>For the panel's holder rows; null when the process has already gone.</summary>

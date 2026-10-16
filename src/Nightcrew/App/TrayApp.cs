@@ -32,6 +32,10 @@ public sealed class TrayApp : ApplicationContext
     private readonly Func<TimeSpan> _idleTime;
     private readonly Func<IReadOnlyList<NamedApp>> _wouldSlowNow;
     private readonly System.Threading.Timer _inputTimer;
+    private readonly FreezeGuard _guard;
+    private readonly Action<string> _recover;
+    private readonly System.Threading.Timer _watch;
+    private static readonly TimeSpan WatchEvery = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan InputCheck = TimeSpan.FromSeconds(1);
     private EngineSnapshot _snapshot = EngineSnapshot.Initial; // UI thread
     private PanelView? _view; // UI thread
@@ -43,11 +47,16 @@ public sealed class TrayApp : ApplicationContext
     /// Subscribes to <paramref name="events"/> but does not own it; the caller disposes it after this. <paramref name="efficiency"/>
     /// is called directly, without the lock, whenever apps must come out of Efficiency mode at once.
     /// <paramref name="wouldSlowNow"/> fills Settings' Add an app list and is called under the lock.
+    /// <paramref name="recover"/> puts everything back and restarts Nightcrew when <paramref name="guard"/> says no tick has
+    /// finished for too long; it is called without the lock, which the frozen tick holds.
     /// </summary>
     public TrayApp(Settings settings, bool dryRun, string exePath, PowerEventsWindow events,
         ActivityMonitor activity, Controller controller, Engine engine, ILog log, IEfficiencyMode efficiency, Func<TimeSpan> idleTime,
-        Func<IReadOnlyList<NamedApp>> wouldSlowNow)
+        Func<IReadOnlyList<NamedApp>> wouldSlowNow, FreezeGuard guard, Action<string> recover)
     {
+        _guard = guard;
+        _recover = recover;
+        _watch = new System.Threading.Timer(_ => Watch(), null, WatchEvery, WatchEvery);
         _efficiency = efficiency;
         _idleTime = idleTime;
         _wouldSlowNow = wouldSlowNow;
@@ -148,6 +157,7 @@ public sealed class TrayApp : ApplicationContext
         {
             if (_closed || _sessionEnding) return;
             _engine.Tick();
+            _guard.TickDone();
             var snapshot = _engine.Snapshot;
             // Check for keyboard and mouse input every second, but only while apps are in Efficiency mode.
             var check = snapshot.EfficiencyApps > 0 ? InputCheck : Timeout.InfiniteTimeSpan;
@@ -162,6 +172,13 @@ public sealed class TrayApp : ApplicationContext
         {
             Monitor.Exit(_gate);
         }
+    }
+
+    /// <summary>Its own timer, once a minute, never taking the lock: a tick that hasn't finished for 3 minutes is a freeze.</summary>
+    private void Watch()
+    {
+        if (_closed || _sessionEnding || !_guard.Frozen) return;
+        _recover("no tick finished for 3 minutes");
     }
 
     /// <summary>UI thread: the tooltip, the tray mark, and the panel if it's open.</summary>
@@ -373,6 +390,7 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>Stops ticking and puts the owner's power settings back, once.</summary>
     private void Shutdown()
     {
+        _watch.Dispose();
         _timer.Dispose();
         _inputTimer.Dispose();
         _efficiency.RestoreAll("quit");
