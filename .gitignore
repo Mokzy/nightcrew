@@ -6,3 +6,6 @@ obj/
 TestResults/
 artifacts/
 *.log
+
+# Design specs and plans stay local; they were written for agents, not readers.
+docs/superpowers/

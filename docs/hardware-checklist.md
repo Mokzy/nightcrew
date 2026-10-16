@@ -27,7 +27,8 @@ down. STANDBYIDLE is "Sleep after" in seconds, in hex; 0 means Never. Run it
 once now and write down the four values. Below they are called **your
 values**.
 
-**Log.** `%LOCALAPPDATA%\Nightcrew\nightcrew.log`, or tray > Open log.
+**Log.** `%LOCALAPPDATA%\Nightcrew\nightcrew.log`, or right-click the lantern
+> Open log.
 
 **Power events.** Run in PowerShell:
 
@@ -388,11 +389,18 @@ reset, look at its file in `%USERPROFILE%\.claude\sessions`.
 ## 17. Second start and --exit
 
 **Do.** Start Nightcrew normally. Run `nightcrew.exe` again from its folder.
-Then run `.\nightcrew.exe --exit` in a terminal and note how long it takes.
+When the panel is open, run this in PowerShell in the same folder.
+PowerShell doesn't wait for the exe on its own, so `Start-Process -Wait` times
+it:
+
+```powershell
+$sw = [Diagnostics.Stopwatch]::StartNew(); $p = Start-Process .\nightcrew.exe -ArgumentList '--exit' -Wait -PassThru; "$([math]::Round($sw.Elapsed.TotalSeconds,1)) s, exit code $($p.ExitCode)"
+```
+
 Then rename `%LOCALAPPDATA%\Nightcrew\settings.json` to `settings.old.json`
 and start Nightcrew.
 
-**Look at.** The screen, the tray and `$LASTEXITCODE`.
+**Look at.** The screen, the tray and the time and exit code.
 
 **Pass.**
 

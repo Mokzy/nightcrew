@@ -1,0 +1,36 @@
+name: Report a problem
+description: Nightcrew did something wrong on your laptop.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: I closed the lid while Claude Code worked. The laptop went to sleep after about 10 minutes.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Nightcrew version
+      description: The first line after a start in the log, for example "Nightcrew 0.3.0 started". Right-click the lantern > Open log.
+    validations:
+      required: true
+  - type: input
+    id: laptop
+    attributes:
+      label: Laptop model and Windows version
+      description: Windows version from `winver`, for example "Windows 11 25H2, build 26200".
+    validations:
+      required: true
+  - type: textarea
+    id: sleep-states
+    attributes:
+      label: Output of `powercfg /a`
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines around the problem
+      description: From `%LOCALAPPDATA%\Nightcrew\nightcrew.log`. Remove anything you don't want to share.
+      render: text

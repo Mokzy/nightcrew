@@ -10,8 +10,8 @@
 
 Close a Windows laptop and it goes to sleep, and whatever Claude Code or Codex
 was doing stops with it. Nightcrew keeps the laptop working with the lid shut
-for exactly as long as an agent is busy, then lets it sleep the way it
-normally would.
+for as long as an agent is busy, then lets it sleep the way it normally
+would.
 
 - **Automatic.** It notices when an agent is working. No hooks, no plugin,
   nothing to configure.
@@ -21,7 +21,7 @@ normally would.
   agent works and puts them back afterwards, even after a crash.
 - **Agents get the machine.** While you're away, apps they don't need go into
   Efficiency mode, the way Task Manager does it.
-- **Light.** One 1.6 MB exe in the tray, using well under 1% of a CPU core.
+- **Light.** One 1.7 MB exe in the tray, using well under 1% of a CPU core.
 
 ## Install
 
@@ -32,8 +32,14 @@ normally would.
 
 The exe isn't code-signed, so the first run shows "Windows protected your PC".
 Click **More info**, then **Run anyway**. With Smart App Control on, Windows
-may block it outright. Each release comes with a SHA-256 file and a GitHub
-build attestation for checking the download.
+may block it outright. To check the download, compare its hash with the
+`nightcrew.exe.sha256` file on the release, or verify its GitHub build
+attestation:
+
+```powershell
+Get-FileHash .\nightcrew.exe
+gh attestation verify .\nightcrew.exe -R Mokzy/nightcrew
+```
 
 ## How it works
 
@@ -43,11 +49,14 @@ build attestation for checking the download.
    Code or Codex session that's growing, a build or script one of them
    started, or heavy GPU use. For Claude Code it also reads the status in
    `~\.claude\sessions\<pid>.json` (busy, idle or waiting), so a long, quiet
-   command still counts. That's the only thing it opens in `~\.claude`, and
-   Nightcrew has no network access. The lantern lights up.
+   command still counts. That's the only file it opens in `~\.claude`:
+   session transcripts are watched for size only, and the login `.key` files
+   are never touched. Nightcrew has no network code. The lantern lights up.
 2. **You close the lid.** The laptop keeps running and locks itself, unless
-   your lid action is Do nothing. Nightcrew has saved your power settings, then
-   set the lid to Do nothing and the sleep timer to Never.
+   your lid action is Do nothing or **Lock when lid closes** is off. When the
+   work started, Nightcrew saved your power settings, then set the lid to Do
+   nothing and the sleep timer to Never. On battery the timer is your
+   lid-closed limit plus an hour instead, or Never if the limit is off.
 3. **Other apps ease off.** Five minutes later, apps the agents don't need go
    into Efficiency mode. Agents, what they're connected to, terminals,
    editors, browsers with a Claude or Codex connector and games are left
@@ -91,9 +100,6 @@ what happens when the work is done.
 ## Good to know
 
 - A game or video that keeps the GPU busy counts as work.
-- In a bag, the laptop loses your Wi-Fi. Set your phone's hotspot to
-  **Connect automatically** (Settings > Network & internet > Wi-Fi > Manage
-  known networks) and Windows switches to it by itself.
 
 <details>
 <summary><b>Other agents and advanced settings</b></summary>
@@ -109,14 +115,15 @@ Nightcrew, edit `%LOCALAPPDATA%\Nightcrew\settings.json`, and start it again:
 
 A key you leave out keeps its default. The log, `nightcrew.log`, is in the
 same folder. To see what Nightcrew would do without letting it change
-anything, run `nightcrew --dry-run` and read the log.
+anything, quit Nightcrew, run `.\nightcrew.exe --dry-run` in its folder and
+read the log.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `GraceMinutes` | 5 | How long work stays live after the last sign of work |
 | `BatteryFloorPercent` | 20 | Hibernate at this charge with the lid closed on battery; 0 = off |
-| `LidClosedCapHours` | 8 | Hibernate after this long with the lid closed and no input; 0 = off |
-| `AwayMinutes` | 5 | Minutes without input before the lid action runs, before lid-closed time counts toward the limit, and before the lock when work starts with the lid closed |
+| `LidClosedCapHours` | 8 | Hibernate after this long with the lid closed and no input. While working, the battery sleep timer is this plus an hour. 0 = off (timer Never) |
+| `AwayMinutes` | 5 | Minutes without input before the lid action runs, before lid-closed time counts toward the limit, before the lock when work starts with the lid closed, and before apps go into Efficiency mode |
 | `LockOnLidClose` | true | Lock the PC when the lid closes |
 | `StartAtLogin` | true | Start Nightcrew when you sign in |
 | `DryRun` | false | Log what Nightcrew would do without doing it |
@@ -131,6 +138,7 @@ anything, run `nightcrew --dry-run` and read the log.
 | `Mark` | `lantern` | The tray mark: `lantern` or `moon` |
 | `EfficiencyWhileAway` | true | Put apps the agents don't need into Efficiency mode while you're away |
 | `LeaveAlone` | none | Process names never put into Efficiency mode (Settings > Keep at full speed) |
+| `LeaveAloneLabels` | none | The names Settings shows for `LeaveAlone` entries |
 | `ConnectorHostNames` | `chrome-native-host`, `extension-host` | Browser connector helpers; their browser is left alone |
 | `StayAwakeForApprovals` | true | With the lid closed, a Claude Code session waiting for you counts as work |
 | `ClaudeSessionsDir` | `%USERPROFILE%\.claude\sessions` | Where Claude Code keeps its session status files |
@@ -139,16 +147,20 @@ anything, run `nightcrew --dry-run` and read the log.
 
 ## Update
 
-Run `.\nightcrew.exe --exit` in its folder, which quits Nightcrew and puts
+Quit Nightcrew: right-click the lantern, then **Quit Nightcrew**. That puts
 your settings back. Replace the exe with the new one, then start it.
+
+From a script, run `Start-Process .\nightcrew.exe -ArgumentList '--exit' -Wait`
+in its folder. PowerShell doesn't wait for `.\nightcrew.exe --exit` on its own.
 
 ## Uninstall
 
-Quit Nightcrew from the tray (or run `.\nightcrew.exe --exit`), then run
-`.\nightcrew.exe --uninstall` in its
-folder. That puts your settings back, takes any app out of Efficiency mode,
-and removes the startup entry and the watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
-the settings and log gone too.
+Quit Nightcrew (right-click the lantern, then **Quit Nightcrew**), then run
+`.\nightcrew.exe --uninstall` in its folder. That puts your settings back,
+takes any app out of Efficiency mode, and removes the startup entry and the
+watchdog task. Then delete the exe, and `%LOCALAPPDATA%\Nightcrew` if you want
+the settings and log gone too. Don't only delete the exe: the watchdog task
+would stay behind.
 
 ## Credits
 
@@ -162,4 +174,4 @@ the settings and log gone too.
 
 ## License
 
-MIT
+[MIT](LICENSE)
