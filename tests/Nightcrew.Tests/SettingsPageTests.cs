@@ -24,7 +24,7 @@ public sealed class SettingsPageTests
             "‹", "Settings",
             "Battery floor", "10%", "15%", "20%", "30%", "Off",
             "Lid-closed limit", "2 h", "4 h", "8 h", "12 h", "Off",
-            "Lock when lid closes", "Start at login", "Efficiency mode while away",
+            "Lock when lid closes", "Stay awake for approvals", "Start at login", "Efficiency mode while away",
             "Keep at full speed", "+ Add an app",
             "Tray mark", "Lantern", "Moon and star",
             "Open log", "Quit Nightcrew",
@@ -35,17 +35,18 @@ public sealed class SettingsPageTests
     public void The_chosen_value_and_switches_that_are_on_fill_lavender()
     {
         var page = SettingsModel.From(new Settings { StartAtLogin = false });
-        var (chosen, other, lockSwitch, loginSwitch) = Sta.Run(() =>
+        var (chosen, other, lockSwitch, loginSwitch, approvalsSwitch) = Sta.Run(() =>
         {
             var root = PanelVisual.BuildSettings(page, null);
             return (Fill(Named<Border>(root, "Battery floor 20%")), Fill(Named<Border>(root, "Battery floor 30%")),
-                Fill(Track(root, "Lock when lid closes")), Fill(Track(root, "Start at login")));
+                Fill(Track(root, "Lock when lid closes")), Fill(Track(root, "Start at login")), Fill(Track(root, "Stay awake for approvals")));
         });
 
         Assert.Equal(Theme.Lavender, chosen);
         Assert.Equal(Colors.Transparent, other);
         Assert.Equal(Theme.Lavender, lockSwitch);
         Assert.Equal(Theme.NightRaised, loginSwitch);
+        Assert.Equal(Theme.Lavender, approvalsSwitch);
     }
 
     [Fact]
@@ -62,11 +63,12 @@ public sealed class SettingsPageTests
                 StartAtLogin: on => calls.Add($"login {on}"),
                 Mark: kind => calls.Add($"mark {kind}"),
                 OpenLog: () => calls.Add("log"),
-                Quit: () => calls.Add("quit")));
+                Quit: () => calls.Add("quit"),
+                StayAwakeForApprovals: on => calls.Add($"approvals {on}")));
 
             foreach (var name in new[]
             {
-                "Battery floor 30%", "Lid-closed limit Off", "Lock when lid closes", "Start at login",
+                "Battery floor 30%", "Lid-closed limit Off", "Lock when lid closes", "Stay awake for approvals", "Start at login",
                 "Tray mark Moon and star", "Open log", "Quit Nightcrew", "Back",
             })
             {
@@ -75,7 +77,7 @@ public sealed class SettingsPageTests
             return calls;
         });
 
-        Assert.Equal(["floor 30", "limit 0", "lock False", "login False", "mark MoonAndStar", "log", "quit", "back"], calls);
+        Assert.Equal(["floor 30", "limit 0", "lock False", "approvals False", "login False", "mark MoonAndStar", "log", "quit", "back"], calls);
     }
 
     [Fact]

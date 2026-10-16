@@ -6,6 +6,13 @@ namespace Nightcrew.Tests;
 public sealed class SettingsModelTests
 {
     [Fact]
+    public void Stay_awake_for_approvals_is_on_by_default_and_follows_the_setting()
+    {
+        Assert.True(SettingsModel.From(new Settings()).StayAwakeForApprovals);
+        Assert.False(SettingsModel.From(new Settings { StayAwakeForApprovals = false }).StayAwakeForApprovals);
+    }
+
+    [Fact]
     public void Efficiency_mode_is_on_by_default_with_nothing_kept_at_full_speed()
     {
         var page = SettingsModel.From(new Settings());

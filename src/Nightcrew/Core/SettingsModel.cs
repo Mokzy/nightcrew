@@ -18,7 +18,8 @@ public sealed record SettingsPage(
     IReadOnlyList<Choice<MarkKind>> Mark,
     bool EfficiencyWhileAway = true,
     IReadOnlyList<FullSpeedApp>? FullSpeed = null,
-    IReadOnlyList<NamedApp>? Addable = null);
+    IReadOnlyList<NamedApp>? Addable = null,
+    bool StayAwakeForApprovals = true);
 
 /// <summary>Turns the settings into the settings page's choices. Pure, so the page's words are unit-tested.</summary>
 public static class SettingsModel
@@ -46,7 +47,8 @@ public static class SettingsModel
                 .ToList(),
             addable?.Where(app => !kept.Contains(app.RootName))
                 .OrderBy(app => app.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-                .ToList());
+                .ToList(),
+            settings.StayAwakeForApprovals);
     }
 
     /// <summary>

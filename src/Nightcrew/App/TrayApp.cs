@@ -82,7 +82,8 @@ public sealed class TrayApp : ApplicationContext
                 },
                 ToggleAddList: ToggleAddList,
                 AddFullSpeed: app => SetFullSpeed(app.RootName, app.DisplayName),
-                RemoveFullSpeed: name => SetFullSpeed(name, null)));
+                RemoveFullSpeed: name => SetFullSpeed(name, null),
+                StayAwakeForApprovals: on => ChangeSetting("Stay awake for approvals", () => _settings.StayAwakeForApprovals = on)));
         UiSafety.Install(_panel.Dispatcher, log);
 
         if (!dryRun)

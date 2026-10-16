@@ -20,7 +20,7 @@ public sealed record PanelActions(Action Hold, Action Pause, Action Settings);
 public sealed record SettingsActions(Action Back, Action<int> BatteryFloor, Action<int> LidClosedLimit,
     Action<bool> LockOnLidClose, Action<bool> StartAtLogin, Action<MarkKind> Mark, Action OpenLog, Action Quit,
     Action<bool>? EfficiencyWhileAway = null, Action? ToggleAddList = null, Action<NamedApp>? AddFullSpeed = null,
-    Action<string>? RemoveFullSpeed = null);
+    Action<string>? RemoveFullSpeed = null, Action<bool>? StayAwakeForApprovals = null);
 
 /// <summary>Builds the click panel from a <see cref="PanelView"/>. The same tree is shown in the window and rendered for the README.</summary>
 public static class PanelVisual
@@ -59,6 +59,7 @@ public static class PanelVisual
         body.Children.Add(Segments("Lid-closed limit", page.LidClosedLimit, actions?.LidClosedLimit));
         body.Children.Add(Hairline());
         body.Children.Add(SwitchRow("Lock when lid closes", page.LockOnLidClose, actions?.LockOnLidClose, bottom: 12));
+        body.Children.Add(SwitchRow("Stay awake for approvals", page.StayAwakeForApprovals, actions?.StayAwakeForApprovals, bottom: 12));
         body.Children.Add(SwitchRow("Start at login", page.StartAtLogin, actions?.StartAtLogin, bottom: 12));
         body.Children.Add(SwitchRow("Efficiency mode while away", page.EfficiencyWhileAway, actions?.EfficiencyWhileAway, bottom: 0));
         if (page.EfficiencyWhileAway) body.Children.Add(FullSpeed(page, actions));
