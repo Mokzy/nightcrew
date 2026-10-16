@@ -33,10 +33,22 @@ public sealed class RestoreRecord
     }
 }
 
-public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
+/// <param name="armValues">What arming writes; <see cref="ArmValuesFor"/> of the lid-closed limit. Defaults to the 8-hour limit.</param>
+public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, Func<PowerValues>? armValues = null)
 {
-    /// <summary>Lid action Do nothing and sleep-after Never, on AC and DC.</summary>
-    public static readonly PowerValues ArmValues = new(0, 0, 0, 0);
+    /// <summary>Lid action Sleep, sleep after 30 minutes on AC and 15 on DC: used when Windows' own defaults can't be read.</summary>
+    public static readonly PowerValues FallbackDefaults = new(1, 1, 1800, 900);
+
+    private readonly Func<PowerValues> _armValues = armValues ?? (() => ArmValuesFor(8));
+
+    /// <summary>
+    /// Lid action Do nothing on AC and DC and sleep-after Never on AC. On DC sleep-after is the lid-closed limit plus an
+    /// hour, so a crash followed by a restart can't leave the logon screen awake for ever; with no limit it is Never.
+    /// </summary>
+    public static PowerValues ArmValuesFor(int lidClosedCapHours) =>
+        new(0, 0, 0, lidClosedCapHours > 0 ? (uint)(lidClosedCapHours + 1) * 3600 : 0);
+
+    private PowerValues ArmValues => _armValues();
 
     public bool HasRecord => File.Exists(path);
 
@@ -80,7 +92,8 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
     public void Arm()
     {
         var active = policy.ActiveScheme();
-        var record = Load(out _);
+        var arm = ArmValues;
+        var record = Load(out var corrupt);
         if (record is not null && RecordedScheme(record) is { } recorded && recorded != active)
         {
             var restored = PutBack(record, recorded);
@@ -90,13 +103,44 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log)
         }
         if (record is null)
         {
-            var owner = policy.Read(active);
-            var saved = new RestoreRecord { Owner = owner, Written = ArmValues, Scheme = active.ToString("D"), CreatedUtc = DateTime.UtcNow };
-            AtomicFile.WriteAllText(path, Json.Serialize(saved));
+            var owner = OwnerValuesOf(active, arm, corrupt);
+            Save(new RestoreRecord { Owner = owner, Written = arm, Scheme = active.ToString("D"), CreatedUtc = DateTime.UtcNow });
             log.Info($"Saved owner power settings {owner}");
         }
-        policy.Write(active, ArmValues);
+        else if (record.Written != arm)
+        {
+            // The lid-closed limit changed: what we write now must be recorded as ours, or a restore would keep it.
+            record.Written = arm;
+            Save(record);
+        }
+        policy.Write(active, arm);
     }
+
+    /// <summary>
+    /// The plan's current values, unless they are Nightcrew's own leftovers from a record that was lost: then Windows'
+    /// defaults, so a lost record can never turn Do nothing into the owner's own setting. Only clear signs count: a
+    /// record just set aside as corrupt while the lid actions are Do nothing, or an exact match with what Nightcrew
+    /// writes, whose DC value nobody sets by hand. A docked owner's real Do nothing and Never stay theirs.
+    /// </summary>
+    private PowerValues OwnerValuesOf(Guid scheme, PowerValues arm, bool recordWasCorrupt)
+    {
+        var current = policy.Read(scheme);
+        var looksLikeOurs = current.LidAc == 0 && current.LidDc == 0 && current.StandbyAc == 0;
+        var lost = (recordWasCorrupt && looksLikeOurs) || (current == arm && arm.StandbyDc != 0);
+        if (!lost) return current;
+        log.Warn("No restore record, and the power settings look like Nightcrew's own; saving Windows' defaults as yours");
+        try
+        {
+            return policy.ReadDefaults(scheme);
+        }
+        catch (Exception ex)
+        {
+            log.Warn($"Couldn't read Windows' default power settings, using sleep after 30 and 15 minutes: {ex.Message}");
+            return FallbackDefaults;
+        }
+    }
+
+    private void Save(RestoreRecord record) => AtomicFile.WriteAllText(path, Json.Serialize(record));
 
     /// <summary>
     /// Puts back each field we still own, to the plan the record names (the active plan for an old record), then deletes

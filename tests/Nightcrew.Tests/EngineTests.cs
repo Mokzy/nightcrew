@@ -70,7 +70,7 @@ public sealed class EngineTests : IDisposable
 
         Assert.True(_journal.HasRecord);
         Assert.Equal(Owner, _journal.OwnerValues);
-        Assert.Equal(RestoreJournal.ArmValues, _policy.Values);
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.Values);
         Assert.True(_keepAwake.IsHeld);
         Assert.Equal(["Write", "Hold"], _calls);
         Assert.Contains(_log.Infos, line => line.StartsWith("Arm") && line.Contains("transcripts"));
@@ -88,7 +88,7 @@ public sealed class EngineTests : IDisposable
         Tick();
 
         Assert.Equal(Owner, _policy.ValuesOf(a));
-        Assert.Equal(RestoreJournal.ArmValues, _policy.ValuesOf(b));
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.ValuesOf(b));
         Assert.Equal(other, _journal.OwnerValues);
         Assert.Contains(_log.Infos, line => line.Contains("Power plan changed"));
     }

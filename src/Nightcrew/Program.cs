@@ -113,7 +113,7 @@ internal static class Program
         IPowerPolicy policy = dryRun ? new DryRunPolicy(realPolicy, log) : realPolicy;
         ISystemPower power = dryRun ? new DryRunSystemPower(realPower, log) : realPower;
         IKeepAwake keepAwake = dryRun ? new DryRunKeepAwake(log) : realKeepAwake;
-        var journal = new RestoreJournal(policy, AppPaths.RestoreFile, log);
+        var journal = new RestoreJournal(policy, AppPaths.RestoreFile, log, () => RestoreJournal.ArmValuesFor(settings.LidClosedCapHours));
 
         var grace = TimeSpan.FromMinutes(settings.GraceMinutes);
         var processes = new TickProcessTable(new ToolhelpProcessTable(), clock); // one list per tick, shared

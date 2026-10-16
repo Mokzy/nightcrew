@@ -13,7 +13,7 @@ public sealed class RestoreJournalTests : IDisposable
 
     private string RecordPath => Path.Combine(_dir, "restore.json");
 
-    private RestoreJournal NewJournal() => new(_policy, RecordPath, _log);
+    private RestoreJournal NewJournal(Func<PowerValues>? armValues = null) => new(_policy, RecordPath, _log, armValues);
 
     public void Dispose()
     {
@@ -29,7 +29,7 @@ public sealed class RestoreJournalTests : IDisposable
 
         Assert.True(journal.HasRecord);
         Assert.Equal(Owner, journal.OwnerValues);
-        Assert.Equal(RestoreJournal.ArmValues, _policy.Values);
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.Values);
         Assert.Equal(1, _policy.Writes);
         Assert.False(File.Exists(RecordPath + ".tmp"));
     }
@@ -44,7 +44,7 @@ public sealed class RestoreJournalTests : IDisposable
         journal.Arm();
 
         Assert.Equal(Owner, journal.OwnerValues);
-        Assert.Equal(RestoreJournal.ArmValues, _policy.Values);
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.Values);
         Assert.Equal(2, _policy.Writes);
     }
 
@@ -66,7 +66,7 @@ public sealed class RestoreJournalTests : IDisposable
     {
         var journal = NewJournal();
         journal.Arm();
-        _policy.Values = new PowerValues(0, 2, 300, 0);
+        _policy.Values = new PowerValues(0, 2, 300, 32400); // fields 1 and 4 still hold what Nightcrew wrote
 
         Assert.True(journal.Restore());
 
@@ -152,8 +152,94 @@ public sealed class RestoreJournalTests : IDisposable
 
         Assert.True(File.Exists(RecordPath + ".corrupt"));
         Assert.Equal(Owner, journal.OwnerValues);
-        Assert.Equal(RestoreJournal.ArmValues, _policy.Values);
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.Values);
         Assert.Single(_log.Warnings);
+    }
+
+    [Fact]
+    public void Arm_writes_dc_sleep_after_as_the_limit_plus_an_hour()
+    {
+        NewJournal(() => RestoreJournal.ArmValuesFor(8)).Arm();
+
+        Assert.Equal(new PowerValues(0, 0, 0, 32400), _policy.Values);
+    }
+
+    [Fact]
+    public void Limit_off_keeps_never_on_dc()
+    {
+        Assert.Equal(new PowerValues(0, 0, 0, 0), RestoreJournal.ArmValuesFor(0));
+    }
+
+    [Fact]
+    public void Arm_after_a_corrupt_record_saves_windows_defaults_not_our_values()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(RecordPath, "{ not json");
+        _policy.Values = RestoreJournal.ArmValuesFor(8);
+        _policy.Defaults = new PowerValues(1, 1, 1200, 600);
+        var journal = NewJournal();
+
+        journal.Arm();
+
+        Assert.Equal(new PowerValues(1, 1, 1200, 600), journal.OwnerValues);
+        Assert.Equal(2, _log.Warnings.Count);
+    }
+
+    [Fact]
+    public void Arm_with_our_exact_values_and_no_record_saves_windows_defaults()
+    {
+        _policy.Values = RestoreJournal.ArmValuesFor(8);
+        _policy.Defaults = new PowerValues(1, 1, 1200, 600);
+        var journal = NewJournal();
+
+        journal.Arm();
+
+        Assert.Equal(new PowerValues(1, 1, 1200, 600), journal.OwnerValues);
+        Assert.Single(_log.Warnings);
+    }
+
+    [Fact]
+    public void Docked_owner_with_do_nothing_and_never_keeps_their_values_across_episodes()
+    {
+        var docked = new PowerValues(0, 0, 0, 0);
+        _policy.Values = docked;
+        for (var episode = 0; episode < 3; episode++)
+        {
+            var journal = NewJournal();
+            journal.Arm();
+            Assert.Equal(docked, journal.OwnerValues);
+            Assert.True(journal.Restore());
+            Assert.Equal(docked, _policy.Values);
+        }
+        Assert.Empty(_log.Warnings);
+    }
+
+    [Fact]
+    public void Defaults_that_cannot_be_read_fall_back_to_sleep_30_and_15_minutes()
+    {
+        _policy.Values = RestoreJournal.ArmValuesFor(8);
+        _policy.Defaults = null;
+        var journal = NewJournal();
+
+        journal.Arm();
+
+        Assert.Equal(RestoreJournal.FallbackDefaults, journal.OwnerValues);
+        Assert.Equal(new PowerValues(1, 1, 1800, 900), RestoreJournal.FallbackDefaults);
+    }
+
+    [Fact]
+    public void Rearm_after_the_limit_changes_still_restores_the_owner_values()
+    {
+        var hours = 8;
+        var journal = NewJournal(() => RestoreJournal.ArmValuesFor(hours));
+        journal.Arm();
+        hours = 4;
+
+        journal.Arm();
+
+        Assert.Equal(new PowerValues(0, 0, 0, 18000), _policy.Values);
+        Assert.True(journal.Restore());
+        Assert.Equal(Owner, _policy.Values);
     }
 
     [Fact]
@@ -195,7 +281,7 @@ public sealed class RestoreJournalTests : IDisposable
         journal.Arm();
 
         Assert.Equal(Owner, _policy.ValuesOf(a));
-        Assert.Equal(RestoreJournal.ArmValues, _policy.ValuesOf(b));
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.ValuesOf(b));
         Assert.Equal(other, journal.OwnerValues);
         Assert.False(journal.SchemeChanged);
     }

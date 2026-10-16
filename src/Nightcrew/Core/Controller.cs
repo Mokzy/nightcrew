@@ -23,7 +23,7 @@ public sealed class Controller(Settings settings)
     /// <summary>Set by a floor or cap hibernate; cleared when the lid is seen Open.</summary>
     public bool Spent { get; private set; }
 
-    /// <summary>Accumulated while Armed and unattended; reset when the lid is Open.</summary>
+    /// <summary>Accumulated while Armed and unattended; reset at each arm (per episode) and when the lid is Open.</summary>
     public TimeSpan LidClosedFor { get; private set; }
 
     public string Status => Describe();
@@ -79,19 +79,32 @@ public sealed class Controller(Settings settings)
     private bool Unattended(Inputs inputs) =>
         inputs.Lid == LidState.Closed && inputs.IdleTime >= TimeSpan.FromMinutes(settings.AwayMinutes);
 
+    /// <summary>
+    /// Lock on lid close, unless the owner's own lid action is Do nothing: then Windows wouldn't lock or sleep either,
+    /// because they use the laptop closed, with a screen.
+    /// </summary>
+    private bool LocksOnLidClose(Inputs inputs) => settings.LockOnLidClose && inputs.OwnerLid != LidAction.DoNothing;
+
+    /// <summary>Arms, starting a new episode: the lid-closed limit counts per episode, not across nights.</summary>
+    private void AddArm(List<Command> commands)
+    {
+        commands.Add(Command.Arm);
+        LidClosedFor = TimeSpan.Zero;
+        Mode = Mode.Armed;
+    }
+
     private void StepIdle(Inputs inputs, List<Command> commands)
     {
         if (!inputs.Live || Spent || !inputs.CanWrite) return;
-        commands.Add(Command.Arm);
-        if (Unattended(inputs) && settings.LockOnLidClose) commands.Add(Command.Lock);
-        Mode = Mode.Armed;
+        AddArm(commands);
+        if (Unattended(inputs) && LocksOnLidClose(inputs)) commands.Add(Command.Lock);
     }
 
     private void StepArmed(Inputs inputs, TimeSpan sinceLastStep, LidState previousLid, List<Command> commands)
     {
         var closed = inputs.Lid == LidState.Closed;
         var unattended = Unattended(inputs);
-        if (closed && previousLid != LidState.Closed && settings.LockOnLidClose) commands.Add(Command.Lock);
+        if (closed && previousLid != LidState.Closed && LocksOnLidClose(inputs)) commands.Add(Command.Lock);
         if (unattended) LidClosedFor += sinceLastStep;
 
         // The floor protects the battery whenever the lid is closed, in use or not; the cap counts only unattended time.
@@ -129,8 +142,7 @@ public sealed class Controller(Settings settings)
         }
         else if (inputs.Live && !Spent && inputs.CanWrite)
         {
-            commands.Add(Command.Arm);
-            Mode = Mode.Armed;
+            AddArm(commands);
         }
         else if (_stage == Stage.WaitAway)
         {

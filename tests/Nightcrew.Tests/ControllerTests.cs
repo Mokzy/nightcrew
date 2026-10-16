@@ -137,13 +137,42 @@ public sealed class ControllerTests
         Assert.Equal(Mode.Finishing, rig.Mode);
         Assert.Equal(TimeSpan.FromMinutes(16), rig.Controller.LidClosedFor);
 
-        rig.Step(Away(), afterMinutes: 1);                           // re-arms: not counted
+        rig.Step(Away(), afterMinutes: 1);                           // re-arms: a new episode starts at zero
         rig.Step(Away(), afterMinutes: 2);
-        Assert.Equal(TimeSpan.FromMinutes(18), rig.Controller.LidClosedFor);
+        Assert.Equal(TimeSpan.FromMinutes(2), rig.Controller.LidClosedFor);
 
         rig.Step(In(lid: Open), afterMinutes: 1);
         Assert.Equal(TimeSpan.Zero, rig.Controller.LidClosedFor);
         Assert.Equal(Mode.Armed, rig.Mode);
+    }
+
+    [Fact]
+    public void Lid_closed_time_counts_per_episode()
+    {
+        var rig = ArmedRig(Closed);
+        rig.Step(Away(), afterMinutes: 30);
+        Assert.Equal("Disarm", rig.Step(Done(LidAction.Sleep, idleMinutes: 5)));
+        Assert.Equal(Mode.Finishing, rig.Mode);
+
+        Assert.Equal("Arm", rig.Step(Away(), afterMinutes: 1));
+        Assert.Equal(TimeSpan.Zero, rig.Controller.LidClosedFor);
+        rig.Step(Away(), afterMinutes: 10);
+        Assert.Equal(TimeSpan.FromMinutes(10), rig.Controller.LidClosedFor);
+    }
+
+    [Theory]
+    [InlineData(LidAction.DoNothing, "Arm")]
+    [InlineData(LidAction.Sleep, "Arm Lock")]
+    public void Arming_with_the_lid_closed_locks_only_when_your_lid_action_is_not_do_nothing(LidAction owner, string expected)
+    {
+        Assert.Equal(expected, new Rig().Step(Away(owner: owner)));
+    }
+
+    [Fact]
+    public void Closing_the_lid_while_armed_does_not_lock_when_your_lid_action_is_do_nothing()
+    {
+        var rig = ArmedRig(Open);
+        Assert.Equal("", rig.Step(In(lid: Closed, owner: LidAction.DoNothing)));
     }
 
     [Theory]
