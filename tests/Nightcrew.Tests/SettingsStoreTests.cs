@@ -98,6 +98,21 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Null_elements_in_lists_are_dropped()
+    {
+        var settings = SettingsStore.Load(WriteSettings(
+            "{\"IgnorePathContains\":[null,\"x\"],\"TranscriptRoots\":[null],\"AgentProcessNames\":[\"claude\",null],\"SelfCpuAgentNames\":[null]," +
+            "\"LeaveAlone\":[null],\"ConnectorHostNames\":[null]}"));
+
+        Assert.Equal(["x"], settings.IgnorePathContains);
+        Assert.Empty(settings.TranscriptRoots);
+        Assert.Equal(["claude"], settings.AgentProcessNames);
+        Assert.Empty(settings.SelfCpuAgentNames);
+        Assert.Empty(settings.LeaveAlone);
+        Assert.Empty(settings.ConnectorHostNames);
+    }
+
+    [Fact]
     public void Unknown_mark_becomes_the_lantern()
     {
         Assert.Equal("lantern", SettingsStore.Load(WriteSettings("{\"Mark\":\"comet\"}")).Mark);

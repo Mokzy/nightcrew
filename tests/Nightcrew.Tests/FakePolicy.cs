@@ -45,6 +45,11 @@ internal sealed class FakePolicy : IPowerPolicy
 
     public void Activate(Guid scheme) => Active = scheme;
 
+    /// <summary>The plan is deleted: reading or writing it throws, as Windows does.</summary>
+    public void RemoveScheme(Guid scheme) => _schemes.Remove(scheme);
+
+    public bool SchemeExists(Guid scheme) => _schemes.ContainsKey(scheme);
+
     public PowerValues ValuesOf(Guid scheme) => _schemes[scheme];
 
     public void FailWritesTo(Guid scheme) => _failWritesTo.Add(scheme);

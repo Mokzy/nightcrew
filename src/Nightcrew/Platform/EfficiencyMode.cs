@@ -123,8 +123,11 @@ public sealed class EfficiencyMode : IEfficiencyMode
                     if (MadeItsOwnChoice(handle, out var priority))
                     {
                         // Idle, and started after we slowed its family: Windows passed the idle priority down. Record it
-                        // with the family's own priority, so it comes back with the family, even after a crash.
-                        if (priority == IdlePriority && appliedSince > 0 && process.StartUtc.Ticks > appliedSince && rootPriority is { } original)
+                        // with the family's own priority, so it comes back with the family, even after a crash. Windows
+                        // doesn't pass throttling down, so a process with a throttling choice made it itself, as a
+                        // background browser renderer does, and is left alone.
+                        if (priority == IdlePriority && ControlMaskOf(handle) == 0
+                            && appliedSince > 0 && process.StartUtc.Ticks > appliedSince && rootPriority is { } original)
                         {
                             entry.OriginalPriority = original;
                             entry.Inherited = true;
@@ -239,7 +242,7 @@ public sealed class EfficiencyMode : IEfficiencyMode
                 var since = parent.AppliedUtcTicks > 0 ? parent.AppliedUtcTicks : parent.StartUtcTicks;
                 if (start.Ticks <= since) continue;
                 if (_table.TryGetTimes(parent.Pid, out var parentStart, out _) && parentStart.Ticks != parent.StartUtcTicks) continue;
-                if (PriorityOf(process.Pid, start) != IdlePriority) continue;
+                if (!IdleWithoutOwnThrottling(process.Pid, start)) continue;
                 seen.Add(process.Pid);
                 next.Add(new EfficiencyEntry
                 {
@@ -259,14 +262,17 @@ public sealed class EfficiencyMode : IEfficiencyMode
         return found;
     }
 
-    /// <summary>The priority class of the process that started at <paramref name="startUtc"/>; 0 if it can't be read.</summary>
-    private static uint PriorityOf(int pid, DateTime startUtc)
+    /// <summary>
+    /// True for the process that started at <paramref name="startUtc"/> when it is at idle priority with no throttling
+    /// choice of its own: what Windows hands down from an idle parent. A process that set throttling chose for itself.
+    /// </summary>
+    private static bool IdleWithoutOwnThrottling(int pid, DateTime startUtc)
     {
         var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-        if (handle == IntPtr.Zero) return 0;
+        if (handle == IntPtr.Zero) return false;
         try
         {
-            return StartedAt(handle, startUtc) ? GetPriorityClass(handle) : 0;
+            return StartedAt(handle, startUtc) && GetPriorityClass(handle) == IdlePriority && ControlMaskOf(handle) == 0;
         }
         finally
         {
@@ -274,7 +280,17 @@ public sealed class EfficiencyMode : IEfficiencyMode
         }
     }
 
-    /// <summary>Clears throttling that's still on, and puts the priority back if it's still idle.</summary>
+    /// <summary>The process's own throttling choices (the control mask); all bits set when it can't be read.</summary>
+    private static uint ControlMaskOf(IntPtr handle)
+    {
+        var state = new ThrottlingState { Version = ThrottlingVersion };
+        return GetProcessInformation(handle, ProcessPowerThrottling, ref state, StateSize) ? state.ControlMask : uint.MaxValue;
+    }
+
+    /// <summary>
+    /// Clears throttling that's still on, and puts the priority back if it's still idle. An inherited process only gets
+    /// its priority back: Nightcrew never throttled it, so any throttling it has is its own.
+    /// </summary>
     private static void Put(EfficiencyEntry entry)
     {
         var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_INFORMATION, false, entry.Pid);
@@ -284,7 +300,7 @@ public sealed class EfficiencyMode : IEfficiencyMode
             if (!StartedAt(handle, entry.Process.StartUtc)) return;
             var state = new ThrottlingState { Version = ThrottlingVersion };
             var readable = GetProcessInformation(handle, ProcessPowerThrottling, ref state, StateSize);
-            if (!readable || ((state.ControlMask & ExecutionSpeed) != 0 && (state.StateMask & ExecutionSpeed) != 0))
+            if (!entry.Inherited && (!readable || ((state.ControlMask & ExecutionSpeed) != 0 && (state.StateMask & ExecutionSpeed) != 0)))
             {
                 var systemDecides = new ThrottlingState { Version = ThrottlingVersion };
                 SetProcessInformation(handle, ProcessPowerThrottling, ref systemDecides, StateSize);

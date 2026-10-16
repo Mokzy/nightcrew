@@ -32,6 +32,8 @@ public interface IPowerPolicy
     void Write(Guid scheme, PowerValues values);
     /// <summary>Windows' default values for the scheme (PowerReadACDefaultIndex and PowerReadDCDefaultIndex).</summary>
     PowerValues ReadDefaults(Guid scheme);
+    /// <summary>False when the plan has been deleted (or Windows' default plans were restored).</summary>
+    bool SchemeExists(Guid scheme);
     bool CanWrite(out string reason);
 }
 

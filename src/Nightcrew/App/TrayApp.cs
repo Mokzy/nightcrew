@@ -40,7 +40,7 @@ public sealed class TrayApp : ApplicationContext
     private EngineSnapshot _snapshot = EngineSnapshot.Initial; // UI thread
     private PanelView? _view; // UI thread
     private IReadOnlyList<NamedApp>? _addable; // UI thread: the open Add an app list, or null
-    private bool _closed;
+    private volatile bool _closed; // set when the settings went back on quit, possibly from the quit deadline's thread
     private volatile bool _closing; // set first when quitting, so no timer or signal starts new work
     private bool _sessionEnding;
     private readonly (EventWaitHandle Handle, RegisteredWaitHandle Wait)? _showPanelSignal;
@@ -123,7 +123,11 @@ public sealed class TrayApp : ApplicationContext
             efficiency.RestoreAll("suspend");
             engine.NoteSuspend();
         };
-        events.Resumed += () => Apply("Resume", controller.OnResume);
+        events.Resumed += () =>
+        {
+            _guard.TickDone(); // time asleep is no freeze, whatever the clock did meanwhile
+            Apply("Resume", controller.OnResume);
+        };
         events.SessionEnding += () => efficiency.RestoreAll("session end");
         events.SessionEnding += () => Guarded("Restore at session end", () =>
         {
@@ -135,6 +139,7 @@ public sealed class TrayApp : ApplicationContext
         events.SessionEnded += () => Guarded("Exit at session end", () =>
         {
             _closing = true;
+            _guard.Stop(); // nothing may restart Nightcrew while Windows ends the session
             _timer.Dispose(); // the settings were already restored on SessionEnding
             ExitThread();
         });
@@ -240,7 +245,7 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>Its own timer, once a minute, never taking the lock: a tick that hasn't finished for 3 minutes is a freeze.</summary>
     private void Watch()
     {
-        if (_closed || _closing || _sessionEnding || !_guard.Frozen) return;
+        if (_closed || _closing || _sessionEnding || !_guard.ShouldRecover()) return;
         _recover("no tick finished for 3 minutes");
     }
 
@@ -451,22 +456,43 @@ public sealed class TrayApp : ApplicationContext
     }
 
     /// <summary>Stops ticking and puts the owner's power settings back, once.</summary>
+    /// <remarks>
+    /// Can't hang: a stuck tick may hold the lock or Efficiency mode's lock, so the restore waits 10 seconds for the
+    /// lock and then goes ahead without it, and if the whole restore takes over 20 seconds Nightcrew exits anyway, which
+    /// lets the watchdog task put the settings back. From here on a crash exits without restarting.
+    /// </remarks>
     private void Shutdown()
     {
+        if (_closing) return; // quitting, or the session ended: done once
         _closing = true;
+        _guard.Stop();
         StopListening(_showPanelSignal);
         StopListening(_exitSignal);
         _watch.Dispose();
         _timer.Dispose();
         _inputTimer.Dispose();
-        _efficiency.RestoreAll("quit");
-        Guarded("Restore on exit", () =>
+        var finished = Deadline.Run(TimeSpan.FromSeconds(20),
+            () => _efficiency.RestoreAll("quit"),
+            () =>
+            {
+                if (Deadline.Under(_gate, TimeSpan.FromSeconds(10), RestoreOnExit)) return;
+                _log.Warn("A check is stuck; putting the power settings back without waiting for it");
+                RestoreOnExit();
+            });
+        if (!finished)
         {
-            if (_closed) return;
-            _closed = true;
-            _engine.RestoreNow();
-        });
+            Deadline.Run(TimeSpan.FromSeconds(2), () => _log.Warn("Quitting didn't finish in 20 seconds; exiting so the watchdog can put the settings back"));
+            Environment.Exit(3);
+        }
         _tray.Visible = false;
         _panel.HidePanel();
+    }
+
+    /// <summary>Puts the owner's power settings back, once.</summary>
+    private void RestoreOnExit()
+    {
+        if (_closed) return;
+        _closed = true;
+        _engine.RestoreNow();
     }
 }

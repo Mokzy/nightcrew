@@ -43,10 +43,15 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
 
     /// <summary>
     /// Lid action Do nothing on AC and DC and sleep-after Never on AC. On DC sleep-after is the lid-closed limit plus an
-    /// hour, so a crash followed by a restart can't leave the logon screen awake for ever; with no limit it is Never.
+    /// hour and 7 seconds, so a crash followed by a restart can't leave the logon screen awake for ever; with no limit it
+    /// is Never. The odd 7 seconds make it ours: Windows only offers whole minutes, so no owner has that value.
     /// </summary>
     public static PowerValues ArmValuesFor(int lidClosedCapHours) =>
-        new(0, 0, 0, lidClosedCapHours > 0 ? (uint)(lidClosedCapHours + 1) * 3600 : 0);
+        new(0, 0, 0, lidClosedCapHours > 0 ? (uint)(lidClosedCapHours + 1) * 3600 + 7 : 0);
+
+    /// <summary>What Nightcrew writes, for any limit: lid Do nothing, AC Never, DC a whole number of hours plus 7 seconds.</summary>
+    private static bool IsOurs(PowerValues values) =>
+        values.LidAc == 0 && values.LidDc == 0 && values.StandbyAc == 0 && values.StandbyDc > 3600 && values.StandbyDc % 3600 == 7;
 
     private PowerValues ArmValues => _armValues();
 
@@ -96,14 +101,13 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
         var record = Load(out var corrupt);
         if (record is not null && RecordedScheme(record) is { } recorded && recorded != active)
         {
-            var restored = PutBack(record, recorded);
+            if (PutBack(record, recorded) is { } restored) log.Info($"Restored power settings {restored} of the previous plan");
             File.Delete(path);
-            log.Info($"Restored power settings {restored} of the previous plan");
             record = null;
         }
         if (record is null)
         {
-            var owner = OwnerValuesOf(active, arm, corrupt);
+            var owner = OwnerValuesOf(active, corrupt);
             Save(new RestoreRecord { Owner = owner, Written = arm, Scheme = active.ToString("D"), CreatedUtc = DateTime.UtcNow });
             log.Info($"Saved owner power settings {owner}");
         }
@@ -119,16 +123,21 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
     /// <summary>
     /// The plan's current values, unless they are Nightcrew's own leftovers from a record that was lost: then Windows'
     /// defaults, so a lost record can never turn Do nothing into the owner's own setting. Only clear signs count: a
-    /// record just set aside as corrupt while the lid actions are Do nothing, or an exact match with what Nightcrew
-    /// writes, whose DC value nobody sets by hand. A docked owner's real Do nothing and Never stay theirs.
+    /// record just set aside as corrupt while the lid actions are Do nothing, or values only Nightcrew writes. A docked
+    /// owner's real Do nothing and Never stay theirs.
     /// </summary>
-    private PowerValues OwnerValuesOf(Guid scheme, PowerValues arm, bool recordWasCorrupt)
+    private PowerValues OwnerValuesOf(Guid scheme, bool recordWasCorrupt)
     {
         var current = policy.Read(scheme);
-        var looksLikeOurs = current.LidAc == 0 && current.LidDc == 0 && current.StandbyAc == 0;
-        var lost = (recordWasCorrupt && looksLikeOurs) || (current == arm && arm.StandbyDc != 0);
+        var lidsAreOurs = current.LidAc == 0 && current.LidDc == 0 && current.StandbyAc == 0;
+        var lost = (recordWasCorrupt && lidsAreOurs) || IsOurs(current);
         if (!lost) return current;
         log.Warn("No restore record, and the power settings look like Nightcrew's own; saving Windows' defaults as yours");
+        return WindowsDefaults(scheme);
+    }
+
+    private PowerValues WindowsDefaults(Guid scheme)
+    {
         try
         {
             return policy.ReadDefaults(scheme);
@@ -144,17 +153,18 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
 
     /// <summary>
     /// Puts back each field we still own, to the plan the record names (the active plan for an old record), then deletes
-    /// the record. False keeps the record for a retry.
+    /// the record. A record too damaged to read is set aside; if the active plan still holds values only Nightcrew writes,
+    /// Windows' defaults go back instead. False keeps the record for a retry.
     /// </summary>
     public bool Restore()
     {
         try
         {
             var record = Load(out var corrupt);
-            if (record is null) return !corrupt;
+            if (record is null) return !corrupt || PutDefaultsOverOurs();
             var result = PutBack(record, RecordedScheme(record) ?? policy.ActiveScheme());
             File.Delete(path);
-            log.Info($"Restored power settings {result}");
+            log.Info(result is { } values ? $"Restored power settings {values}" : "Restore record dropped: its power plan no longer exists");
             return true;
         }
         catch (Exception ex)
@@ -164,9 +174,28 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
         }
     }
 
-    /// <summary>Writes the owner's values back over every field we still own in the scheme; returns what it holds now.</summary>
-    private PowerValues PutBack(RestoreRecord record, Guid scheme)
+    /// <summary>The record was unreadable: if the active plan holds values only Nightcrew writes, put Windows' defaults back.</summary>
+    private bool PutDefaultsOverOurs()
     {
+        var active = policy.ActiveScheme();
+        if (!IsOurs(policy.Read(active))) return false;
+        var defaults = WindowsDefaults(active);
+        policy.Write(active, defaults);
+        log.Warn($"The restore record was unreadable and the power settings were Nightcrew's own; put back Windows' defaults {defaults}");
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the owner's values back over every field we still own in the scheme; returns what it holds now, or null
+    /// when the plan has been deleted (nothing to put back, so the record can go).
+    /// </summary>
+    private PowerValues? PutBack(RestoreRecord record, Guid scheme)
+    {
+        if (!policy.SchemeExists(scheme))
+        {
+            log.Warn("The power plan Nightcrew changed no longer exists; nothing to put back");
+            return null;
+        }
         var current = policy.Read(scheme);
         var owner = record.Owner;
         var written = record.Written;

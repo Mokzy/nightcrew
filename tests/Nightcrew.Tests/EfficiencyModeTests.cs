@@ -152,6 +152,45 @@ public sealed class EfficiencyModeTests : IDisposable
         Assert.False(ThrottledOf(child));
     }
 
+    /// <summary>As a Chromium renderer does in the background: idle priority plus throttling, chosen by the app itself.</summary>
+    private static void ChooseOwnEfficiency(Process process)
+    {
+        var own = new ThrottlingState { Version = 1, ControlMask = 1, StateMask = 1 };
+        Assert.True(SetProcessInformation(process.Handle, 4, ref own, Marshal.SizeOf<ThrottlingState>()));
+    }
+
+    [Fact]
+    public void A_child_that_chose_its_own_throttling_is_left_alone_by_the_sweep()
+    {
+        var (parent, parentRef) = StartParent();
+        var mode = Create();
+        mode.Apply(Family(parentRef), mode.Generation);
+        var appliedAt = DateTime.UtcNow;
+        var (child, _) = WaitForLateChild(parent, appliedAt);
+        ChooseOwnEfficiency(child);
+
+        mode.RestoreAll("test");
+
+        Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child));
+        Assert.True(ThrottledOf(child));
+    }
+
+    [Fact]
+    public void A_child_that_chose_its_own_throttling_is_not_recorded_as_inherited()
+    {
+        var (parent, parentRef) = StartParent();
+        var mode = Create();
+        mode.Apply(Family(parentRef), mode.Generation);
+        var appliedAt = DateTime.UtcNow;
+        var (child, childRef) = WaitForLateChild(parent, appliedAt);
+        ChooseOwnEfficiency(child);
+
+        mode.Apply(Family(parentRef, childRef), mode.Generation);
+
+        var record = Json.Deserialize<EfficiencyRecord>(File.ReadAllText(RecordPath));
+        Assert.DoesNotContain(record.Entries, entry => entry.Process == childRef);
+    }
+
     [Fact]
     public void A_process_that_was_idle_before_efficiency_mode_is_left_alone_by_the_sweep()
     {

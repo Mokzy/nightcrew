@@ -13,6 +13,8 @@ public sealed class DryRunPolicy(IPowerPolicy real, ILog log) : IPowerPolicy
 
     public PowerValues ReadDefaults(Guid scheme) => real.ReadDefaults(scheme);
 
+    public bool SchemeExists(Guid scheme) => real.SchemeExists(scheme);
+
     public bool CanWrite(out string reason) => real.CanWrite(out reason);
 }
 

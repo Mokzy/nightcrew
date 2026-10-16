@@ -9,6 +9,8 @@ public sealed class PowrProfPolicy : IPowerPolicy
     private const uint ACCESS_AC_POWER_SETTING_INDEX = 0;
     private const uint ACCESS_DC_POWER_SETTING_INDEX = 1;
     private const uint KEY_WRITE = 0x20006;
+    private const uint ACCESS_SCHEME = 16;
+    private const uint ERROR_NO_MORE_ITEMS = 259;
 
     private sealed record Setting(string Name, Guid Subgroup, Guid Id);
 
@@ -31,6 +33,20 @@ public sealed class PowrProfPolicy : IPowerPolicy
         var readBack = ReadValues(scheme);
         if (readBack != values)
             throw new InvalidOperationException($"Power settings read-back mismatch: wrote {values}, read {readBack}");
+    }
+
+    /// <summary>Lists the power plans with PowerEnumerate; true if the scheme is one of them. Throws if the list can't be read.</summary>
+    public bool SchemeExists(Guid scheme)
+    {
+        var buffer = new byte[16];
+        for (uint index = 0; ; index++)
+        {
+            var size = (uint)buffer.Length;
+            var code = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ACCESS_SCHEME, index, buffer, ref size);
+            if (code == ERROR_NO_MORE_ITEMS) return false;
+            Check(code, "PowerEnumerate");
+            if (new Guid(buffer) == scheme) return true;
+        }
     }
 
     public PowerValues ReadDefaults(Guid scheme) => new(
@@ -139,6 +155,10 @@ public sealed class PowrProfPolicy : IPowerPolicy
 
     [DllImport("powrprof.dll")]
     private static extern uint PowerReadDCDefaultIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subgroupGuid, ref Guid settingGuid, out uint value);
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerEnumerate(IntPtr rootPowerKey, IntPtr schemeGuid, IntPtr subgroupOfPowerSettingsGuid, uint accessFlags,
+        uint index, byte[] buffer, ref uint bufferSize);
 
     [DllImport("powrprof.dll")]
     private static extern uint PowerSettingAccessCheckEx(uint accessFlags, ref Guid powerGuid, uint accessType);

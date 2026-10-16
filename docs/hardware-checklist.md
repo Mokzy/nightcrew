@@ -97,7 +97,7 @@ works.
 **Pass.**
 
 - While the agent works, LIDACTION is `0x00000000` on AC and DC, STANDBYIDLE
-  is `0x00000000` on AC and `0x00007e90` (9 hours: the lid-closed limit plus
+  is `0x00000000` on AC and `0x00007e97` (9 hours and 7 seconds: the lid-closed limit plus
   an hour) on DC, and `restore.json` exists.
 - `powercfg /requests` lists `nightcrew.exe` under SYSTEM and EXECUTION.
 - After the 6 minutes, the settings check shows your values again, and

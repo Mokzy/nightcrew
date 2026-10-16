@@ -48,13 +48,13 @@ public sealed class Settings
     private void OnDeserialized(StreamingContext context)
     {
         var defaults = new Settings();
-        TranscriptRoots ??= defaults.TranscriptRoots;
-        IgnorePathContains ??= defaults.IgnorePathContains;
-        AgentProcessNames ??= defaults.AgentProcessNames;
-        SelfCpuAgentNames ??= defaults.SelfCpuAgentNames;
-        LeaveAlone ??= defaults.LeaveAlone;
+        TranscriptRoots = Clean(TranscriptRoots, defaults.TranscriptRoots);
+        IgnorePathContains = Clean(IgnorePathContains, defaults.IgnorePathContains);
+        AgentProcessNames = Clean(AgentProcessNames, defaults.AgentProcessNames);
+        SelfCpuAgentNames = Clean(SelfCpuAgentNames, defaults.SelfCpuAgentNames);
+        LeaveAlone = Clean(LeaveAlone, defaults.LeaveAlone);
         LeaveAloneLabels ??= defaults.LeaveAloneLabels;
-        ConnectorHostNames ??= defaults.ConnectorHostNames;
+        ConnectorHostNames = Clean(ConnectorHostNames, defaults.ConnectorHostNames);
         ClaudeSessionsDir ??= defaults.ClaudeSessionsDir;
         Mark = MarkKinds.Name(MarkKinds.Parse(Mark));
 
@@ -67,6 +67,10 @@ public sealed class Settings
         BatteryFloorPercent = Clamp(BatteryFloorPercent, 0, 90);
         LidClosedCapHours = Clamp(LidClosedCapHours, 0, 48);
     }
+
+    /// <summary>A null list gets its default; a null element in a list is dropped.</summary>
+    private static string[] Clean(string[]? list, string[] fallback) =>
+        list is null ? fallback : list.Where(item => item is not null).ToArray();
 
     private static int Clamp(int value, int low, int high) => Math.Min(Math.Max(value, low), high);
 

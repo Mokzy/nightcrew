@@ -67,4 +67,44 @@ public sealed class FreezeGuardTests
         _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.True(guard.MayRestart);
     }
+
+    [Fact]
+    public void Two_frozen_checks_in_a_row_recover()
+    {
+        var guard = NewGuard();
+        guard.TickDone();
+
+        _clock.Advance(TimeSpan.FromMinutes(3) + TimeSpan.FromSeconds(1));
+        Assert.False(guard.ShouldRecover());
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.True(guard.ShouldRecover());
+    }
+
+    [Fact]
+    public void One_late_check_after_waking_does_not_recover()
+    {
+        var guard = NewGuard();
+        guard.TickDone();
+
+        _clock.Advance(TimeSpan.FromMinutes(4)); // the clock moved while asleep, and the watch ran first
+        Assert.False(guard.ShouldRecover());
+        guard.TickDone();                         // then the tick ran
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.False(guard.ShouldRecover());
+    }
+
+    [Fact]
+    public void After_stop_it_is_never_frozen_and_never_restarts()
+    {
+        var guard = NewGuard();
+        _clock.Advance(TimeSpan.FromMinutes(30));
+
+        guard.Stop();
+
+        Assert.False(guard.Frozen);
+        Assert.False(guard.ShouldRecover());
+        Assert.False(guard.ShouldRecover());
+        Assert.False(guard.MayRestart);
+    }
 }

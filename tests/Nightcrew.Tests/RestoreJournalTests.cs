@@ -66,7 +66,7 @@ public sealed class RestoreJournalTests : IDisposable
     {
         var journal = NewJournal();
         journal.Arm();
-        _policy.Values = new PowerValues(0, 2, 300, 32400); // fields 1 and 4 still hold what Nightcrew wrote
+        _policy.Values = new PowerValues(0, 2, 300, 32407); // fields 1 and 4 still hold what Nightcrew wrote
 
         Assert.True(journal.Restore());
 
@@ -161,7 +161,7 @@ public sealed class RestoreJournalTests : IDisposable
     {
         NewJournal(() => RestoreJournal.ArmValuesFor(8)).Arm();
 
-        Assert.Equal(new PowerValues(0, 0, 0, 32400), _policy.Values);
+        Assert.Equal(new PowerValues(0, 0, 0, 32407), _policy.Values);
     }
 
     [Fact]
@@ -237,9 +237,82 @@ public sealed class RestoreJournalTests : IDisposable
 
         journal.Arm();
 
-        Assert.Equal(new PowerValues(0, 0, 0, 18000), _policy.Values);
+        Assert.Equal(new PowerValues(0, 0, 0, 18007), _policy.Values);
         Assert.True(journal.Restore());
         Assert.Equal(Owner, _policy.Values);
+    }
+
+    [Fact]
+    public void Docked_owner_whose_dc_sleep_is_a_whole_number_of_hours_keeps_their_values()
+    {
+        var docked = new PowerValues(0, 0, 0, 10800); // Do nothing, AC Never, DC 3 hours: what a 2-hour limit once wrote
+        _policy.Values = docked;
+
+        var journal = NewJournal(() => RestoreJournal.ArmValuesFor(2));
+        journal.Arm();
+
+        Assert.Equal(docked, journal.OwnerValues);
+        Assert.Empty(_log.Warnings);
+    }
+
+    [Fact]
+    public void Our_values_from_any_limit_count_as_lost()
+    {
+        _policy.Values = RestoreJournal.ArmValuesFor(4);
+        _policy.Defaults = new PowerValues(1, 1, 1200, 600);
+
+        NewJournal(() => RestoreJournal.ArmValuesFor(8)).Arm();
+
+        Assert.Equal(new PowerValues(1, 1, 1200, 600), NewJournal().OwnerValues);
+    }
+
+    [Fact]
+    public void Restore_over_a_corrupt_record_puts_windows_defaults_back_when_the_values_are_ours()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(RecordPath, "\0\0\0\0");
+        _policy.Values = RestoreJournal.ArmValuesFor(8);
+        _policy.Defaults = new PowerValues(1, 1, 1200, 600);
+
+        Assert.True(NewJournal().Restore());
+
+        Assert.Equal(new PowerValues(1, 1, 1200, 600), _policy.Values);
+        Assert.True(File.Exists(RecordPath + ".corrupt"));
+    }
+
+    [Fact]
+    public void Restore_when_the_recorded_plan_was_deleted_drops_the_record()
+    {
+        var a = _policy.Active;
+        var other = new PowerValues(2, 2, 300, 300);
+        var b = _policy.AddScheme(other);
+        var journal = NewJournal();
+        journal.Arm();
+        _policy.Activate(b);
+        _policy.RemoveScheme(a);
+
+        Assert.True(journal.Restore());
+
+        Assert.False(journal.HasRecord);
+        Assert.Equal(other, _policy.ValuesOf(b));
+        Assert.Single(_log.Warnings);
+    }
+
+    [Fact]
+    public void Arm_after_the_recorded_plan_was_deleted_arms_the_active_plan()
+    {
+        var a = _policy.Active;
+        var other = new PowerValues(2, 2, 300, 300);
+        var b = _policy.AddScheme(other);
+        var journal = NewJournal();
+        journal.Arm();
+        _policy.Activate(b);
+        _policy.RemoveScheme(a);
+
+        journal.Arm();
+
+        Assert.Equal(RestoreJournal.ArmValuesFor(8), _policy.ValuesOf(b));
+        Assert.Equal(other, journal.OwnerValues);
     }
 
     [Fact]

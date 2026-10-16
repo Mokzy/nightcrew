@@ -17,6 +17,15 @@ public sealed class PowrProfPolicyTests
     }
 
     [Fact]
+    public void SchemeExists_knows_the_active_plan_and_not_a_made_up_one()
+    {
+        var policy = new PowrProfPolicy();
+
+        Assert.True(policy.SchemeExists(policy.ActiveScheme()));
+        Assert.False(policy.SchemeExists(Guid.NewGuid()));
+    }
+
+    [Fact]
     public void ReadDefaults_returns_lid_actions_in_range()
     {
         var policy = new PowrProfPolicy();
