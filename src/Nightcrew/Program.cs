@@ -113,7 +113,7 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         var settings = SettingsStore.Load(AppPaths.SettingsFile, out var firstRun);
         var dryRun = dryRunFlag || settings.DryRun; // the flag is not saved into settings
-        log.Info(dryRun ? "Nightcrew started (dry run)" : "Nightcrew started");
+        log.Info(dryRun ? $"Nightcrew {AppVersion.Text} started (dry run)" : $"Nightcrew {AppVersion.Text} started");
 
         // A record left by a crash or power cut: put the owner's settings back first. This uses the real
         // policy even in a dry run, so a dry run never deletes a real record without restoring it.
@@ -148,7 +148,7 @@ internal static class Program
 
         var grace = TimeSpan.FromMinutes(settings.GraceMinutes);
         var processes = new TickProcessTable(new ToolhelpProcessTable(), clock); // one list per tick, shared
-        var gpuSignal = new GpuSignal(gpu, settings.GpuPercent, ProcessName);
+        var gpuSignal = new GpuSignal(gpu, settings.GpuPercent, ProcessNames.From(processes));
         IBusySignal[] signals =
         [
             new TranscriptSignal(transcripts, settings.TranscriptRoots, settings.IgnorePathContains, grace),
@@ -182,19 +182,5 @@ internal static class Program
         try { log.Warn(why); }
         catch (Exception) { }
         Environment.Exit(3);
-    }
-
-    /// <summary>For the panel's holder rows; null when the process has already gone.</summary>
-    private static string? ProcessName(int pid)
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return process.ProcessName;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 }

@@ -112,4 +112,25 @@ public sealed class GpuSignalTests
         gpu.Dispose();
         Assert.Empty(gpu.PercentByPid());
     }
+
+    [Fact]
+    public void Holder_names_come_from_the_tick_list()
+    {
+        var name = ProcessNames.From(new ListTable([new ProcessEntry(42, 1, "ollama")]));
+
+        Assert.Equal("ollama", name(42));
+        Assert.Null(name(43));
+    }
+
+    private sealed class ListTable(IReadOnlyList<ProcessEntry> entries) : IProcessTable
+    {
+        public IReadOnlyList<ProcessEntry> List() => entries;
+
+        public bool TryGetTimes(int pid, out DateTime startUtc, out TimeSpan cpu)
+        {
+            startUtc = default;
+            cpu = default;
+            return false;
+        }
+    }
 }

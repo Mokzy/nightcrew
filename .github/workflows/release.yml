@@ -26,6 +26,11 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - name: Check the tag matches the version
+        shell: pwsh
+        run: |
+          $want = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          if ("$env:GITHUB_REF_NAME".TrimStart('v') -ne $want) { throw "Tag $env:GITHUB_REF_NAME does not match Version $want in Directory.Build.props" }
       - run: dotnet test -c Release
       - run: dotnet build -c Release
       - run: pwsh -File build/check-single-file.ps1
