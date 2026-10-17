@@ -3,7 +3,7 @@ using Nightcrew.Platform;
 
 namespace Nightcrew.Core;
 
-/// <summary>What the owner had before we armed, and what we wrote over it.</summary>
+/// <summary>What the user had before we armed, and what we wrote over it.</summary>
 [DataContract]
 public sealed class RestoreRecord
 {
@@ -44,7 +44,7 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
     /// <summary>
     /// Lid action Do nothing on AC and DC and sleep-after Never on AC. On DC sleep-after is the lid-closed limit plus an
     /// hour and 7 seconds, so a crash followed by a restart can't leave the logon screen awake for ever; with no limit it
-    /// is Never. The odd 7 seconds make it ours: Windows only offers whole minutes, so no owner has that value.
+    /// is Never. The odd 7 seconds make it ours: Windows only offers whole minutes, so no user has that value.
     /// </summary>
     public static PowerValues ArmValuesFor(int lidClosedCapHours) =>
         new(0, 0, 0, lidClosedCapHours > 0 ? (uint)(lidClosedCapHours + 1) * 3600 + 7 : 0);
@@ -57,7 +57,7 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
 
     public bool HasRecord => File.Exists(path);
 
-    /// <summary>The owner's values from the record; null when there is no readable record.</summary>
+    /// <summary>The user's values from the record; null when there is no readable record.</summary>
     public PowerValues? OwnerValues
     {
         get
@@ -90,7 +90,7 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
     }
 
     /// <summary>
-    /// Saves the owner's values of the active plan once, then writes ArmValues to it. If the record belongs to another
+    /// Saves the user's values of the active plan once, then writes ArmValues to it. If the record belongs to another
     /// plan (the plan was switched while armed), that plan is put back first; if putting it back fails, this throws and
     /// the record stays as it is. Throws if reading or writing the policy fails.
     /// </summary>
@@ -122,9 +122,9 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
 
     /// <summary>
     /// The plan's current values, unless they are Nightcrew's own leftovers from a record that was lost: then Windows'
-    /// defaults, so a lost record can never turn Do nothing into the owner's own setting. Only clear signs count: a
+    /// defaults, so a lost record can never turn Do nothing into the user's own setting. Only clear signs count: a
     /// record just set aside as corrupt while the lid actions are Do nothing, or values only Nightcrew writes. A docked
-    /// owner's real Do nothing and Never stay theirs.
+    /// user's real Do nothing and Never stay theirs.
     /// </summary>
     private PowerValues OwnerValuesOf(Guid scheme, bool recordWasCorrupt)
     {
@@ -186,7 +186,7 @@ public sealed class RestoreJournal(IPowerPolicy policy, string path, ILog log, F
     }
 
     /// <summary>
-    /// Writes the owner's values back over every field we still own in the scheme; returns what it holds now, or null
+    /// Writes the user's values back over every field we still own in the scheme; returns what it holds now, or null
     /// when the plan has been deleted (nothing to put back, so the record can go).
     /// </summary>
     private PowerValues? PutBack(RestoreRecord record, Guid scheme)

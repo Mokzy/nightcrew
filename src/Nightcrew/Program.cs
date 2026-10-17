@@ -112,7 +112,7 @@ internal static class Program
         var dryRun = dryRunFlag || settings.DryRun; // the flag is not saved into settings
         log.Info(dryRun ? $"Nightcrew {AppVersion.Text} started (dry run)" : $"Nightcrew {AppVersion.Text} started");
 
-        // A record left by a crash or power cut: put the owner's settings back first. This uses the real
+        // A record left by a crash or power cut: put the user's settings back first. This uses the real
         // policy even in a dry run, so a dry run never deletes a real record without restoring it.
         var realPolicy = new PowrProfPolicy();
         var leftover = new RestoreJournal(realPolicy, AppPaths.RestoreFile, log);

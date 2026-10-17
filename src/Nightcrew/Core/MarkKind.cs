@@ -1,6 +1,6 @@
 namespace Nightcrew.Core;
 
-/// <summary>The two tray marks. The owner picks one with the <c>Mark</c> setting.</summary>
+/// <summary>The two tray marks. The user picks one with the <c>Mark</c> setting.</summary>
 public enum MarkKind { Lantern, MoonAndStar }
 
 public static class MarkKinds

@@ -80,7 +80,7 @@ public sealed class Controller(Settings settings)
         inputs.Lid == LidState.Closed && inputs.IdleTime >= TimeSpan.FromMinutes(settings.AwayMinutes);
 
     /// <summary>
-    /// Lock on lid close, unless the owner's own lid action is Do nothing: then Windows wouldn't lock or sleep either,
+    /// Lock on lid close, unless the user's own lid action is Do nothing: then Windows wouldn't lock or sleep either,
     /// because they use the laptop closed, with a screen.
     /// </summary>
     private bool LocksOnLidClose(Inputs inputs) => settings.LockOnLidClose && inputs.OwnerLid != LidAction.DoNothing;
