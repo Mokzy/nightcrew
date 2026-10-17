@@ -40,7 +40,7 @@ attestation:
 
 ```powershell
 Get-FileHash .\nightcrew.exe
-gh attestation verify .\nightcrew.exe -R Mokzy/nightcrew
+gh attestation verify .\nightcrew.exe -R leikauskas/nightcrew
 ```
 
 ## How it works
