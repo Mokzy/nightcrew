@@ -6,7 +6,7 @@ using Nightcrew.Core;
 namespace Nightcrew.App.Ui;
 
 /// <summary>
-/// Both marks as path data on a 24-unit grid, like Insomnia's eye. Everything that draws a mark (tray icons,
+/// Both marks as path data on a 24-unit grid. Everything that draws a mark (tray icons,
 /// the panel header, the app icon, the README assets) builds it here.
 /// </summary>
 public static class MarkGeometry

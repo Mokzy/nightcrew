@@ -166,8 +166,6 @@ would stay behind.
 
 ## Credits
 
-- The idea and the plain, honest voice come from
-  [Insomnia](https://github.com/krishhgg/Insomnia) by Krish Garg.
 - The cream ink, serif headline and lavender come from Wispr Flow's design
   language.
 - Type is [EB Garamond](https://github.com/octaviopardo/EBGaramond12) and
