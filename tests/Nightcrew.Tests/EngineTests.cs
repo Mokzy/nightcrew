@@ -261,7 +261,7 @@ public sealed class EngineTests : IDisposable
         Tick();
         Tick(afterMinutes: 1);
 
-        // While armed, the owner's DC lid action comes from the record, not from the policy (now Do nothing).
+        // While armed, the user's DC lid action comes from the record, not from the policy (now Do nothing).
         Assert.Equal("Live \u2014 lid closed 0h01, when done: hibernate (transcripts)", _engine.Status);
     }
 

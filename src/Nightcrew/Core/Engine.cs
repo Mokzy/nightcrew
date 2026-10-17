@@ -1,6 +1,6 @@
 namespace Nightcrew.Core;
 
-/// <summary>What needs the owner's attention, most important first.</summary>
+/// <summary>What needs the user's attention, most important first.</summary>
 public enum EngineWarning { None, PolicyBlocks, ArmBackoff, RestorePending, Stopped }
 
 /// <summary>
@@ -83,7 +83,7 @@ public sealed class Engine(ActivityMonitor activity, Controller controller, Rest
     /// </summary>
     public void NoteSuspend() => _suspended = true;
 
-    /// <summary>Releases the keep-awake request and restores the owner's settings (quit, session end, startup).</summary>
+    /// <summary>Releases the keep-awake request and restores the user's settings (quit, session end, startup).</summary>
     public void RestoreNow() => ReleaseAndRestore(clock.Now);
 
     /// <summary>

@@ -455,7 +455,7 @@ public sealed class TrayApp : ApplicationContext
         }
     }
 
-    /// <summary>Stops ticking and puts the owner's power settings back, once.</summary>
+    /// <summary>Stops ticking and puts the user's power settings back, once.</summary>
     /// <remarks>
     /// Can't hang: a stuck tick may hold the lock or Efficiency mode's lock, so the restore waits 10 seconds for the
     /// lock and then goes ahead without it, and if the whole restore takes over 20 seconds Nightcrew exits anyway, which
@@ -488,7 +488,7 @@ public sealed class TrayApp : ApplicationContext
         _panel.HidePanel();
     }
 
-    /// <summary>Puts the owner's power settings back, once.</summary>
+    /// <summary>Puts the user's power settings back, once.</summary>
     private void RestoreOnExit()
     {
         if (_closed) return;

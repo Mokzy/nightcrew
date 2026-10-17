@@ -330,7 +330,7 @@ public sealed class ControllerTests
     [InlineData(LidAction.Hibernate, "Hibernate", Mode.Idle)]
     [InlineData(LidAction.ShutDown, "Hibernate", Mode.Idle)]
     [InlineData(LidAction.DoNothing, "", Mode.Idle)]
-    public void Finishing_acts_on_the_owner_lid_action_once_away(LidAction owner, string expected, Mode mode)
+    public void Finishing_acts_on_your_lid_action_once_away(LidAction owner, string expected, Mode mode)
     {
         var rig = FinishingRig(owner);
         Assert.Equal("", rig.Step(Done(owner, idleMinutes: 4.9)));
