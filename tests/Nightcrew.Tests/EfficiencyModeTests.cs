@@ -86,33 +86,55 @@ public sealed class EfficiencyModeTests : IDisposable
         return (state.ControlMask, state.StateMask);
     }
 
-    /// <summary>A parent at normal priority that starts a second ping about two seconds in, after the test has slowed it.</summary>
+    /// <summary>
+    /// A parent at normal priority that waits on a first ping, its hold, and starts a second only when
+    /// <see cref="StartLateChild"/> ends the hold. So the second surely starts after whatever the test did to the parent
+    /// first. A clock can't tell that (net48's DateTime.UtcNow lags by up to a clock tick, but Windows stamps a new
+    /// process precisely), and nor can the parent's input: with a UTF-8 console, .NET writes a byte-order mark to it.
+    /// </summary>
     private (Process Process, ProcessRef Ref) StartParent()
     {
-        var parent = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & ping -n 30 127.0.0.1 >nul")
+        var parent = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 30 127.0.0.1 >nul & ping -n 30 127.0.0.1 >nul")
             { UseShellExecute = false, CreateNoWindow = true })!;
         _children.Add(parent);
         parent.PriorityClass = ProcessPriorityClass.Normal;
         Assert.True(new ToolhelpProcessTable().TryGetTimes(parent.Id, out var start, out _));
-        return (parent, new ProcessRef(parent.Id, start));
+        var parentRef = new ProcessRef(parent.Id, start);
+        _children.Add(PingOf(parentRef, start).Process); // the hold, up before the test acts on the parent
+        return (parent, parentRef);
     }
 
-    /// <summary>The parent's ping that started after <paramref name="afterUtc"/>; waits up to 10 seconds for it.</summary>
-    private (Process Process, ProcessRef Ref) WaitForLateChild(Process parent, DateTime afterUtc)
+    /// <summary>Ends the parent's hold, and returns the ping it then starts.</summary>
+    private (Process Process, ProcessRef Ref) StartLateChild(ProcessRef parent)
+    {
+        var (hold, holdRef) = PingOf(parent, parent.StartUtc);
+        using (hold)
+        {
+            hold.Kill();
+            hold.WaitForExit();
+        }
+        var late = PingOf(parent, holdRef.StartUtc);
+        _children.Add(late.Process);
+        return late;
+    }
+
+    /// <summary>
+    /// A ping <paramref name="parent"/> started after <paramref name="afterUtc"/>, by the start times Windows
+    /// stamps; waits up to 10 seconds for it. One older than the parent belonged to an earlier process with its pid.
+    /// </summary>
+    private static (Process Process, ProcessRef Ref) PingOf(ProcessRef parent, DateTime afterUtc)
     {
         var table = new ToolhelpProcessTable();
         for (var tries = 0; tries < 100; tries++)
         {
-            foreach (var entry in table.List().Where(entry => entry.ParentPid == parent.Id && entry.Name == "ping"))
+            foreach (var entry in table.List().Where(entry => entry.ParentPid == parent.Pid && entry.Name == "ping"))
             {
                 if (!table.TryGetTimes(entry.Pid, out var start, out _) || start <= afterUtc) continue;
-                var child = Process.GetProcessById(entry.Pid);
-                _children.Add(child);
-                return (child, new ProcessRef(entry.Pid, start));
+                return (Process.GetProcessById(entry.Pid), new ProcessRef(entry.Pid, start));
             }
             Thread.Sleep(100);
         }
-        throw new InvalidOperationException("The parent never started its second ping.");
+        throw new InvalidOperationException("The parent never started a ping.");
     }
 
     [Fact]
@@ -121,8 +143,7 @@ public sealed class EfficiencyModeTests : IDisposable
         var (parent, parentRef) = StartParent();
         var mode = Create();
         Assert.Equal(ApplyResult.Applied, mode.Apply(Family(parentRef), mode.Generation));
-        var appliedAt = DateTime.UtcNow; // only a ping started after this surely started from a slowed parent
-        var (child, childRef) = WaitForLateChild(parent, appliedAt);
+        var (child, childRef) = StartLateChild(parentRef);
         Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child)); // Windows passed the parent's priority down
         Assert.False(ThrottledOf(child));                           // but not the power throttling
 
@@ -139,11 +160,10 @@ public sealed class EfficiencyModeTests : IDisposable
     [Fact]
     public void RestoreAll_sweeps_an_idle_child_that_was_never_in_a_family()
     {
-        var (parent, parentRef) = StartParent();
+        var (_, parentRef) = StartParent();
         var mode = Create();
-        mode.Apply(Family(parentRef), mode.Generation);
-        var appliedAt = DateTime.UtcNow;
-        var (child, _) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ApplyResult.Applied, mode.Apply(Family(parentRef), mode.Generation));
+        var (child, _) = StartLateChild(parentRef);
         Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child));
 
         mode.RestoreAll("test");
@@ -162,11 +182,10 @@ public sealed class EfficiencyModeTests : IDisposable
     [Fact]
     public void A_child_that_chose_its_own_throttling_is_left_alone_by_the_sweep()
     {
-        var (parent, parentRef) = StartParent();
+        var (_, parentRef) = StartParent();
         var mode = Create();
-        mode.Apply(Family(parentRef), mode.Generation);
-        var appliedAt = DateTime.UtcNow;
-        var (child, _) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ApplyResult.Applied, mode.Apply(Family(parentRef), mode.Generation));
+        var (child, _) = StartLateChild(parentRef);
         ChooseOwnEfficiency(child);
 
         mode.RestoreAll("test");
@@ -178,11 +197,10 @@ public sealed class EfficiencyModeTests : IDisposable
     [Fact]
     public void A_child_that_chose_its_own_throttling_is_not_recorded_as_inherited()
     {
-        var (parent, parentRef) = StartParent();
+        var (_, parentRef) = StartParent();
         var mode = Create();
-        mode.Apply(Family(parentRef), mode.Generation);
-        var appliedAt = DateTime.UtcNow;
-        var (child, childRef) = WaitForLateChild(parent, appliedAt);
+        Assert.Equal(ApplyResult.Applied, mode.Apply(Family(parentRef), mode.Generation));
+        var (child, childRef) = StartLateChild(parentRef);
         ChooseOwnEfficiency(child);
 
         mode.Apply(Family(parentRef, childRef), mode.Generation);
@@ -208,10 +226,9 @@ public sealed class EfficiencyModeTests : IDisposable
     [Fact]
     public void The_watchdog_sweep_works_from_the_record_alone()
     {
-        var (parent, parentRef) = StartParent();
-        Create().Apply(Family(parentRef), 0); // as if Nightcrew then crashed
-        var appliedAt = DateTime.UtcNow;
-        var (child, _) = WaitForLateChild(parent, appliedAt);
+        var (_, parentRef) = StartParent();
+        Assert.Equal(ApplyResult.Applied, Create().Apply(Family(parentRef), 0)); // as if Nightcrew then crashed
+        var (child, _) = StartLateChild(parentRef);
         Assert.Equal(ProcessPriorityClass.Idle, PriorityOf(child));
 
         Create().RestoreAll("watchdog");
