@@ -13,7 +13,7 @@ was doing stops with it. Nightcrew keeps the laptop working with the lid shut
 for as long as an agent is busy, then lets it sleep the way it normally
 would.
 
-https://github.com/user-attachments/assets/8851311d-e5d4-41e9-bc0f-9c47293640e4
+https://github.com/user-attachments/assets/0601ec32-64e5-4e64-8674-ad1ac29c1073
 
 - **Automatic.** It notices when an agent is working. No hooks, no plugin,
   nothing to configure.
